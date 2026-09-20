@@ -1,0 +1,278 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Snug instant replay</title>
+</head>
+<body>
+<script>
+  // No UI at all — this window is never shown (see createRecordingWindow
+  // in main.js). It exists purely to run getUserMedia/MediaRecorder, which
+  // only work in a renderer, not the main process.
+  //
+  // This page owns ENCODING only, not "how much history to keep" — it just
+  // keeps producing short, clean, self-contained segments and hands each
+  // one to main.js as it finishes. main.js is what maintains the actual
+  // rolling buffer (a ring of these segments) and stitches the needed ones
+  // together with ffmpeg on save — see the comment above SEGMENT_SECONDS in
+  // main.js for why that split exists.
+
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let restartTimer = null;
+  let currentSegmentSeconds = 3;
+  let currentFps = 60;
+
+  // H.264/MP4 is listed first because it's the only codec here with a shot
+  // at hardware encoding on Windows (via Media Foundation, potentially
+  // using the GPU's dedicated encoder chip) — VP9/VP8 are software-only in
+  // Chromium, which is real CPU load stacked directly on top of whatever
+  // game is running. This was tried before and reverted: real-world testing
+  // produced MP4 files ffprobe couldn't read ("no tfhd was found"), because
+  // gluing together MULTIPLE timesliced ondataavailable chunks doesn't
+  // produce a valid fragmented-MP4 the way it does for WebM. The actual fix
+  // (see startSegment below) is to never timeslice at all, so each segment
+  // yields exactly ONE self-contained blob at stop() — nothing to
+  // concatenate, for either codec. WebM stays listed as a fallback for
+  // machines/builds where H.264 encoding isn't available.
+  // avc1.640034/.640028 explicitly request H.264 High Profile (better
+  // compression per bit than whatever profile a bare "avc1" negotiates,
+  // which real-world testing showed lands on the much weaker Constrained
+  // Baseline profile) at levels 5.2 / 4.0 — 5.2 is needed for 4K60, 4.0
+  // covers lower resolutions/frame rates if 5.2 isn't supported.
+  //
+  // (A frame-level WebCodecs ring buffer was tried in place of this whole
+  // segment-and-stitch approach, since it's the more "correct" way to do a
+  // rolling buffer — but real-world testing showed VideoEncoder's hardware
+  // H.264 path actually fails outright at native 4K60 on this hardware
+  // ("Encoder creation error"), only succeeding in software, which would
+  // have silently regressed the CPU fix above for exactly the resolution
+  // most people will actually use. MediaRecorder's H.264 path demonstrably
+  // does get hardware encoding at 4K60, so segments + ffmpeg concat is what
+  // actually preserves that.)
+  const CANDIDATE_MIME_TYPES = [
+    "video/mp4;codecs=avc1.640034",
+    "video/mp4;codecs=avc1.640028",
+    "video/mp4;codecs=avc1",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+
+  function pickMimeType() {
+    for (const type of CANDIDATE_MIME_TYPES) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return "video/webm";
+  }
+
+  function extensionFor(mimeType) {
+    return mimeType.startsWith("video/mp4") ? "mp4" : "webm";
+  }
+
+  // "Good enough to edit or share" needs deliberately generous bitrates —
+  // MediaRecorder's own default when videoBitsPerSecond is left unset
+  // skews toward the lower end (fine for a webcam call, not for
+  // screen-captured gameplay full of fine detail and fast motion). Picked
+  // by the ACTUAL negotiated capture height (not the requested one — with
+  // resolution: "auto" nothing requested a specific size at all), so a 4K
+  // screen gets a 4K-appropriate bitrate regardless of which setting led
+  // to it. Halved at 30fps: half the frames need noticeably less bitrate
+  // for the same perceived quality, not the same amount. (Real-world
+  // testing showed the encoder treats this as a target/ceiling rather than
+  // a fixed rate — a near-static desktop lands far below it, fast motion
+  // pushes close to or above it — which is the right behavior here.)
+  function bitrateForCapture(height, fps) {
+    const base =
+      height >= 2000 ? 40_000_000 : height >= 1400 ? 20_000_000 : height >= 1000 ? 12_000_000 : 6_000_000;
+    return fps <= 30 ? Math.round(base * 0.65) : base;
+  }
+
+  // A fresh MediaRecorder on the SAME capture stream, not a fresh
+  // getUserMedia call — restarting only the encoder avoids re-triggering
+  // any capture-source setup, so there's no visible gap in what's being
+  // buffered, just a clean boundary between one segment's file and the
+  // next.
+  //
+  // Each recorder's chunks live on the INSTANCE itself (recorder.chunks_),
+  // not a shared module-level array. That's not a style choice — an
+  // earlier version used one shared `currentChunks` array reassigned on
+  // every restart, and it corrupted real output: the auto-restart timer
+  // can fire (stopping the old recorder and resetting the shared array for
+  // the new one) while the OLD recorder's own final ondataavailable is
+  // still in flight; when that stale event landed, it pushed the old
+  // segment's last chunk into the NEW segment's array, or arrived after a
+  // save had already read and cleared it. Attaching chunks directly to
+  // each recorder means a stale event from a dead recorder can only ever
+  // touch that dead recorder's own array, which nothing reads anymore.
+  //
+  // recorder.start() is called with NO timeslice argument, on purpose —
+  // that means ondataavailable fires exactly ONCE per recorder, when it's
+  // stopped, carrying the ENTIRE segment as a single self-contained blob.
+  // (Per the MediaRecorder spec, stop() always flushes everything gathered
+  // so far into that one event, whether or not a timeslice was given.)
+  // With only ever one chunk, there's nothing to concatenate within a
+  // segment — which is what makes it safe to use fragmented-MP4/H.264 here
+  // at all. Stitching ACROSS segments (for a save) is a separate, correct
+  // operation done with ffmpeg in main.js, not by gluing blobs together.
+  function startSegment() {
+    if (restartTimer) clearTimeout(restartTimer);
+    const mimeType = pickMimeType();
+    // The track's own settings reflect what was ACTUALLY negotiated, which
+    // for resolution: "auto" is whatever the screen's native size turned
+    // out to be — nothing upstream of this ever computed that number, so
+    // this is the only place it's known. Stashed on the recorder itself so
+    // main.js can tell whether two segments are actually compatible to
+    // concatenate (a mid-session resolution/fps change makes them not).
+    const track = mediaStream.getVideoTracks()[0];
+    const trackSettings = track?.getSettings() ?? {};
+    const actualWidth = trackSettings.width ?? 1920;
+    const actualHeight = trackSettings.height ?? 1080;
+    const recorder = new MediaRecorder(mediaStream, {
+      mimeType,
+      videoBitsPerSecond: bitrateForCapture(actualHeight, currentFps),
+    });
+    recorder.mimeType_ = mimeType;
+    recorder.width_ = actualWidth;
+    recorder.height_ = actualHeight;
+    recorder.chunks_ = [];
+    recorder.startMs_ = Date.now();
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recorder.chunks_.push(e.data);
+    };
+    recorder.start();
+    mediaRecorder = recorder;
+
+    restartTimer = setTimeout(() => {
+      // Don't await this — the whole point of restarting immediately
+      // below is that there's no capture gap while the just-finished
+      // segment's blob gets built and shipped off to main.js in the
+      // background.
+      finalizeSegment(recorder);
+      startSegment();
+    }, currentSegmentSeconds * 1000);
+  }
+
+  // Stops a recorder and, if it actually captured anything, hands the
+  // finished segment to main.js to persist into the rolling buffer. Used
+  // for both the periodic restart above and an explicit save below — a
+  // save-triggered stop is just an early, on-demand segment boundary, not
+  // a fundamentally different kind of event.
+  function finalizeSegment(recorder) {
+    return new Promise((resolve) => {
+      recorder.onstop = () => {
+        const endMs = Date.now();
+        if (recorder.chunks_.length === 0) {
+          resolve(null);
+          return;
+        }
+        const blob = new Blob(recorder.chunks_, { type: recorder.mimeType_ });
+        blob.arrayBuffer().then((arrayBuffer) => {
+          window.recorder.segmentReady(arrayBuffer, {
+            extension: extensionFor(recorder.mimeType_),
+            mimeType: recorder.mimeType_,
+            width: recorder.width_,
+            height: recorder.height_,
+            fps: currentFps,
+            startMs: recorder.startMs_,
+            endMs,
+          });
+          resolve({ startMs: recorder.startMs_, endMs });
+        });
+      };
+      recorder.stop(); // triggers one final ondataavailable before onstop
+    });
+  }
+
+  function stopCapture() {
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = null;
+    // Not finalized/reported — we're stopping capture entirely (feature
+    // disabled, or a setting changed), and main.js clears its whole ring
+    // the moment that happens anyway, so this last partial segment would
+    // just be deleted unread.
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    mediaRecorder = null;
+    if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
+  }
+
+  window.recorder.onStart(async (config) => {
+    stopCapture();
+    currentSegmentSeconds = config.segmentSeconds;
+    currentFps = config.fps;
+    try {
+      const mandatory = {
+        chromeMediaSource: "desktop",
+        chromeMediaSourceId: config.sourceId,
+        minFrameRate: config.fps,
+        maxFrameRate: config.fps,
+      };
+      // No width/height at all is what makes this "auto" (match the
+      // screen's own native resolution) — Chromium then captures the
+      // source at whatever size it actually is, 4K or otherwise, instead
+      // of being told to produce one. A resolution preset sends both, see
+      // main.js's RESOLUTION_PRESETS.
+      if (config.width && config.height) {
+        mandatory.minWidth = config.width;
+        mandatory.maxWidth = config.width;
+        mandatory.minHeight = config.height;
+        mandatory.maxHeight = config.height;
+      }
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { mandatory },
+      });
+      startSegment();
+    } catch (err) {
+      console.error("[snug instant-replay] failed to start capture", err);
+    }
+  });
+
+  window.recorder.onStop(() => {
+    stopCapture();
+  });
+
+  window.recorder.onSave(async () => {
+    // Snapshot the current instance by reference — startSegment() below
+    // reassigns the module-level mediaRecorder, but `recorder` here keeps
+    // pointing at the one we're actually saving regardless.
+    const recorder = mediaRecorder;
+    if (!recorder || recorder.state === "inactive") {
+      window.recorder.flushComplete({
+        ok: false,
+        error: "Instant replay hasn't captured anything yet — give it a few seconds.",
+      });
+      return;
+    }
+    // Clearing this BEFORE stop() is what prevents the natural periodic
+    // restart from racing with the one startSegment() below performs —
+    // without it, both could fire within the same tick and hand two
+    // different "current" recorders to two different onstop handlers.
+    if (restartTimer) clearTimeout(restartTimer);
+
+    const finished = await finalizeSegment(recorder);
+
+    // Begin the next segment immediately — minimal capture gap, and
+    // guarantees a second save right after doesn't just re-export the
+    // same footage.
+    startSegment();
+
+    if (!finished) {
+      window.recorder.flushComplete({
+        ok: false,
+        error: "Instant replay hasn't captured anything yet — give it a few seconds.",
+      });
+      return;
+    }
+
+    // The actual file (stitched from this segment plus however many
+    // earlier ones cover the requested buffer length) is built in
+    // main.js, which already has finalizeSegment's segmentReady call
+    // above sitting in its ring — this just tells it "the flush you
+    // asked for landed, go build the clip now."
+    window.recorder.flushComplete({ ok: true });
+  });
+</script>
+</body>
+</html>

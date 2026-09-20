@@ -1,0 +1,277 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Snug overlay</title>
+<style>
+  /* Mirrors snug/src/app/globals.css's token values. The theme arrives as
+     ?theme=... at load and via window.overlay.onTheme afterwards (the
+     overlay outlives a theme switch) — this used to be hardcoded dark,
+     which clashed for anyone running the app in light mode. */
+  :root {
+    color-scheme: light;
+    --btn-bg: rgba(255, 255, 255, 0.96);
+    --btn-shadow: rgba(42, 38, 64, 0.22);
+    --text: #2a2640;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --btn-bg: rgba(37, 35, 47, 0.95);
+    --btn-shadow: rgba(0, 0, 0, 0.35);
+    --text: #f2f0f5;
+  }
+  :root {
+    /* Brand accents — identical in both themes. --on-accent is the dark
+       ink that sits ON any of them (same role as globals.css's
+       --snug-on-accent). */
+    --mint: #38c9a8;
+    --pink: #ff6f91;
+    --peach: #fdba74;
+    --on-accent: #17161f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 200px;
+    height: 200px;
+    background: transparent;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Everything (the rings below, and the buttons further down) lives in
+     here so the whole HUD can slide in as one unit — see playEntrance()
+     in the script. `both` holds the from-state until the animation
+     starts and the to-state after it ends, so there's no flash of the
+     wrong position/opacity on either side. */
+  .enter {
+    position: absolute;
+    inset: 0;
+    animation: overlayEnter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes overlayEnter {
+    from { transform: translate(-70px, -70px); opacity: 0; }
+    to { transform: translate(0, 0); opacity: 1; }
+  }
+
+  /* Three concentric ring OUTLINES (not filled bands — see the splash
+     screen's own mark, which this exactly mirrors) centered on the
+     window's top-left corner, so only their bottom-right quarter ever
+     falls inside the 200x200 viewport. Each is cut into two arcs via
+     opposite-side border colors: a uniform ring reads as static even
+     while rotating (perfectly symmetric), but a two-tone arc visibly
+     sweeps — the same trick, same colors, same spin+breathe motion as
+     splash.html's logo. No filled center, no background wash: the
+     buttons carry their own contrast, so these are free to run behind
+     and through them. */
+  .rings {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+    animation: ringsBreathe 3.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes ringsBreathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.035); }
+  }
+  .ring {
+    position: absolute;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border-style: solid;
+    border-width: 5px;
+  }
+  /* Radii clustered tightly together (18px apart) and centered on the
+     buttons' OWN arc radius — #mute-self, #mute-all and #start-share are
+     46px circles positioned by their top-left corner (see left/top
+     below), so their true CENTER radius from the corner is left+23/top+23
+     each, not the raw left/top numbers: mute-self and start-share both
+     work out to √(116²+48²) ≈ 125.5px, mute-all to 88√2 ≈ 124.5px — call
+     it 125 for all three. The middle ring (peach/yellow) sits exactly on
+     that, with mint and pink 18px out on either side — a tight bundle
+     centered ON the buttons' own arc, not a wide decorative frame around
+     them. */
+  .ring-mint {
+    left: -143px;
+    top: -143px;
+    width: 286px;
+    height: 286px;
+    border-color: var(--mint) var(--mint) transparent transparent;
+    opacity: 0.6;
+    animation: ringSpin 3.2s linear infinite;
+  }
+  .ring-peach {
+    left: -125px;
+    top: -125px;
+    width: 250px;
+    height: 250px;
+    border-color: transparent transparent var(--peach) var(--peach);
+    opacity: 0.75;
+    animation: ringSpin 2.4s linear infinite reverse;
+  }
+  .ring-pink {
+    left: -107px;
+    top: -107px;
+    width: 214px;
+    height: 214px;
+    border-color: var(--pink) var(--pink) transparent transparent;
+    opacity: 0.85;
+    animation: ringSpin 2s linear infinite;
+  }
+  @keyframes ringSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .btn {
+    position: absolute;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--btn-bg);
+    color: var(--text);
+    cursor: pointer;
+    box-shadow: 0 3px 10px var(--btn-shadow);
+    transition: transform 90ms ease, background-color 150ms ease, color 150ms ease, filter 150ms ease;
+  }
+  .btn:hover { transform: scale(1.08); }
+  .btn:active { transform: scale(0.94); }
+  .btn.active { background: var(--pink); color: #ffffff; }
+  .btn.share { background: var(--mint); color: var(--on-accent); }
+  .btn.replay { background: var(--peach); color: var(--on-accent); }
+  /* Hover brightens each button's OWN color rather than swapping it for
+     another button's. Share used to turn peach on hover and replay used to
+     turn mint — i.e. each one hovered into the other's identity color,
+     which read as "this button just became that other button". */
+  .btn.share:hover,
+  .btn.replay:hover { filter: brightness(1.12); }
+  /* Briefly confirms a save actually happened (or didn't) — there's no
+     room for text on a 46px circle, so this is the whole feedback: a
+     quick color pulse, cleared automatically after ~1.2s (see the script's
+     onSaveResult handler). Mint deliberately no longer doubles as the
+     replay button's hover color, so a success flash can't be mistaken for
+     an ordinary hover. */
+  .btn.replay.save-ok { background: var(--mint); color: var(--on-accent); }
+  .btn.replay.save-fail { background: var(--pink); color: #ffffff; }
+
+  /* Positions follow the arc: angle measured from the top edge, radius
+     125px from the corner at (0,0) — matches the rings' own center radius
+     above. Four buttons now, so the 90deg quarter splits into 5 equal
+     18deg gaps (top edge to first button, between each, last button to
+     left edge) instead of the original three's 22.5deg gaps. */
+  #mute-self { left: 96px; top: 16px; }    /* 18deg */
+  #mute-all  { left: 78px; top: 51px; }    /* 36deg */
+  #save-replay { left: 51px; top: 78px; }  /* 54deg */
+  #start-share { left: 16px; top: 96px; }  /* 72deg */
+</style>
+</head>
+<body>
+  <div class="enter" id="enter">
+    <div class="rings">
+      <div class="ring ring-mint"></div>
+      <div class="ring ring-peach"></div>
+      <div class="ring ring-pink"></div>
+    </div>
+    <button id="mute-self" class="btn" title="Mute / unmute yourself">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
+        <path d="M19 11a7 7 0 0 1-14 0" />
+        <path d="M12 18v3" />
+      </svg>
+    </button>
+    <button id="mute-all" class="btn" title="Deafen — mute everyone at once">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 15v-3a8 8 0 0 1 16 0v3" />
+        <path d="M4 15a2 2 0 0 1 2-2h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2Z" />
+        <path d="M20 15a2 2 0 0 0-2-2h-1a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h1a2 2 0 0 0 2-2Z" />
+      </svg>
+    </button>
+    <button id="save-replay" class="btn replay" title="Save instant replay">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="5.5" width="13" height="13" rx="2.5" />
+        <path d="m18.5 9 3-2v10l-3-2" />
+      </svg>
+    </button>
+    <button id="start-share" class="btn share" title="Start screen share">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="13" rx="2" />
+        <path d="M8 21h8" />
+        <path d="M12 17v4" />
+      </svg>
+    </button>
+  </div>
+  <script>
+    // Theme arrives twice over: baked into the URL at load (so the first
+    // paint is already right) and pushed live afterwards, since the
+    // overlay stays open across a theme switch in Settings.
+    function applyTheme(theme) {
+      if (theme === "dark") document.documentElement.dataset.theme = "dark";
+      else delete document.documentElement.dataset.theme;
+    }
+    applyTheme(new URLSearchParams(location.search).get("theme"));
+    window.overlay.onTheme(applyTheme);
+
+    const muteSelfBtn = document.getElementById("mute-self");
+    const muteAllBtn = document.getElementById("mute-all");
+    const shareBtn = document.getElementById("start-share");
+    const replayBtn = document.getElementById("save-replay");
+
+    muteSelfBtn.addEventListener("click", () => window.overlay.muteSelf());
+    muteAllBtn.addEventListener("click", () => window.overlay.muteAll());
+    shareBtn.addEventListener("click", () => window.overlay.startShare());
+    replayBtn.addEventListener("click", () => window.overlay.saveReplay());
+
+    let saveFlashTimer = null;
+    window.overlay.onSaveResult((result) => {
+      clearTimeout(saveFlashTimer);
+      replayBtn.classList.remove("save-ok", "save-fail");
+      replayBtn.classList.add(result.ok ? "save-ok" : "save-fail");
+      saveFlashTimer = setTimeout(() => {
+        replayBtn.classList.remove("save-ok", "save-fail");
+      }, 1200);
+    });
+
+    window.overlay.onMuteState((muted) => {
+      muteSelfBtn.classList.toggle("active", muted);
+      muteSelfBtn.title = muted ? "Unmute yourself" : "Mute yourself";
+    });
+    window.overlay.onDeafenState((deafened) => {
+      muteAllBtn.classList.toggle("active", deafened);
+      muteAllBtn.title = deafened ? "Un-deafen" : "Deafen — mute everyone at once";
+    });
+
+    // Only the quarter-circle (radius 200 from the top-left corner) should
+    // ever be clickable — everywhere else in this square window needs to
+    // pass clicks through to whatever's behind it (the game).
+    let wasInteractive = false;
+    window.addEventListener("mousemove", (e) => {
+      const interactive = Math.hypot(e.clientX, e.clientY) <= 200;
+      if (interactive !== wasInteractive) {
+        wasInteractive = interactive;
+        window.overlay.setInteractive(interactive);
+      }
+    });
+
+    // Toggling the overlay never reloads this page — main.js just
+    // hides/shows the same window (see toggleOverlay) — so the .enter
+    // slide-in's own "plays once on load" animation would otherwise only
+    // ever run that first time. Electron ties document.visibilityState to
+    // the window's own hidden/shown state, so this is the correct signal
+    // to replay it on every toggle: drop the animation, force a reflow so
+    // the browser forgets it was ever there, then restore it.
+    const enterEl = document.getElementById("enter");
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      enterEl.style.animation = "none";
+      void enterEl.offsetWidth;
+      enterEl.style.animation = "";
+    });
+  </script>
+</body>
+</html>

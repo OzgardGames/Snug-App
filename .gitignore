@@ -1,0 +1,7 @@
+# Dependencies — restored from package-lock.json. Includes ffmpeg-static,
+# which alone is ~80MB of binary.
+node_modules/
+
+# electron-builder output: the unpacked app plus a ~160MB NSIS installer
+# per build.
+release/

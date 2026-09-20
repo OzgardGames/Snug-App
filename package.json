@@ -1,0 +1,58 @@
+{
+  "name": "snug-desktop",
+  "version": "1.0.0",
+  "description": "Snug desktop app",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build:frontend": "node scripts/build-frontend.js",
+    "package:win": "npm run build:frontend && electron-builder --win"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "app.snug.desktop",
+    "productName": "Snug",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../snug/.next/standalone",
+        "to": "standalone",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "afterPack": "./scripts/afterPack.js",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0"
+  }
+}

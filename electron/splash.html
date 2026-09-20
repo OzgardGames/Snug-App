@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Snug</title>
+<style>
+  /* Mirrors snug/src/app/globals.css's own :root / [data-theme="dark"]
+     token values. main.js passes the user's actual choice in as
+     ?theme=... (see the script at the bottom) — this page used to be
+     hardcoded light while the overlay and share picker were hardcoded
+     dark, so whichever theme you picked, something always clashed. */
+  :root {
+    color-scheme: light;
+    --surface: #ffffff;
+    --text: #2a2640;
+    --muted: #8a7c8c;
+    --shadow: rgba(42, 38, 64, 0.22);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1e1c28;
+    --text: #f2f0f5;
+    --muted: #8a8794;
+    --shadow: rgba(0, 0, 0, 0.45);
+  }
+  :root {
+    /* Brand accents are the same in both themes. */
+    --mint: #38c9a8;
+    --pink: #ff6f91;
+    --peach: #fdba74;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .card {
+    -webkit-app-region: drag;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: var(--surface);
+    border-radius: 28px;
+    box-shadow: 0 24px 60px var(--shadow);
+  }
+  .mark {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    animation: breathe 1.8s ease-in-out infinite;
+  }
+  .mark div { position: absolute; border-radius: 50%; }
+  .mark .r1 {
+    inset: 0;
+    border: 5px solid var(--mint);
+    opacity: 0.55;
+    animation: spin 3.2s linear infinite;
+  }
+  .mark .r2 {
+    inset: 9px;
+    border: 5px solid var(--peach);
+    opacity: 0.8;
+    animation: spin 2.4s linear infinite reverse;
+  }
+  .mark .r3 { inset: 19px; background: var(--pink); }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(0.92); }
+  }
+  /* Only the dashed "gap" side of each ring actually reads as motion —
+     a full circle rotating in place looks static, so each ring is cut
+     into two arcs via border-color-on-opposite-sides instead of a
+     uniform border. */
+  .mark .r1 { border-color: var(--mint) var(--mint) transparent transparent; }
+  .mark .r2 { border-color: transparent transparent var(--peach) var(--peach); }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .wordmark {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .tagline {
+    margin-top: -8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .dots {
+    display: flex;
+    gap: 5px;
+    margin-top: 4px;
+  }
+  .dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.15s; }
+  .dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+    40% { transform: translateY(-4px); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark"><div class="r1"></div><div class="r2"></div><div class="r3"></div></div>
+    <div class="wordmark">Snug</div>
+    <div class="tagline">No channels, no setup — just a code and you're in.</div>
+    <div class="dots"><span></span><span></span><span></span></div>
+  </div>
+<script>
+  // main.js bakes the current theme into this page's URL at load time
+  // (win.loadFile(..., { search: `theme=${uiTheme}` })). The splash is on
+  // screen before any renderer exists, so there's nothing to ask — the
+  // value has to arrive with the page itself.
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "dark") document.documentElement.dataset.theme = "dark";
+</script>
+</body>
+</html>
