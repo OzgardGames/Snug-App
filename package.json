@@ -3,21 +3,31 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/copy-rnnoise-assets.mjs",
     "dev": "next dev",
+    "dev:signal": "node server/index.mjs",
+    "dev:all": "concurrently -n next,signal -c cyan,magenta \"npm:dev\" \"npm:dev:signal\"",
     "build": "next build",
     "start": "next start",
+    "start:signal": "node server/index.mjs",
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1134.0",
+    "@sapphi-red/web-noise-suppressor": "^0.4.0",
+    "busboy": "^1.6.0",
     "next": "16.3.5",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",

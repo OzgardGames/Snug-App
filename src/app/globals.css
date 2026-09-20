@@ -1,26 +1,368 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --snug-bg: #fdeef2;
+  --snug-surface: #ffffff;
+  --snug-surface-tint: #fdeef2;
+  --snug-text: #2a2640;
+  --snug-muted: #8a7c8c;
+  --snug-mint: #38c9a8;
+  --snug-pink: #ff6f91;
+  --snug-peach: #fdba74;
+  /* Owner/crown accent. Theme-invariant like mint/pink/peach — it only ever
+     sits on participant-colored cards and dark badge bubbles, both of which
+     are the same in either theme. */
+  --snug-gold: #f0a93a;
+  /* Dark ink for text/icons sitting ON one of the bright accent colors
+     above. Those accents don't change between themes, so neither does
+     this — using --snug-text instead would flip to near-white in dark and
+     leave, say, a white icon on a peach bubble. */
+  --snug-on-accent: #17161f;
+  --snug-primary: #2a2640;
+  --snug-primary-text: #ffffff;
+  /* Inactive/unavailable control surface (a disabled submit button). */
+  --snug-disabled: #d8cfd4;
+  --snug-scroll-thumb: #f5d6c6;
+  --snug-shadow-card: 0 20px 50px rgba(42, 38, 64, 0.1);
+  --snug-shadow-popover: 0 12px 28px rgba(42, 38, 64, 0.18);
+  --snug-toggle-on: #38c9a8;
+  --snug-toggle-off: #e7d8cf;
+  --snug-thumb-on: #ffffff;
+  --snug-thumb-off: #ffffff;
+  --snug-placeholder: #b0a3ac;
+  --snug-focus: #38c9a8;
+  --snug-chip: #ffffff;
+  --snug-divider: #f0e4ea;
+  --snug-ring-glow: rgba(255, 255, 255, 0.9);
+  --snug-avatar-overlay: rgba(255, 255, 255, 0.4);
+
+  --font-display: var(--font-poppins);
+}
+
+:root[data-theme="dark"] {
+  --snug-bg: #17161f;
+  --snug-surface: #1e1c28;
+  --snug-surface-tint: #25232f;
+  --snug-text: #f2f0f5;
+  --snug-muted: #8a8794;
+  --snug-mint: #38c9a8;
+  --snug-pink: #ff6f91;
+  --snug-peach: #fdba74;
+  --snug-gold: #f0a93a;
+  --snug-on-accent: #17161f;
+  --snug-primary: #c4f542;
+  --snug-primary-text: #17161f;
+  --snug-disabled: #33313e;
+  --snug-scroll-thumb: #33313e;
+  --snug-shadow-card: 0 20px 50px rgba(0, 0, 0, 0.4);
+  --snug-shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.4);
+  --snug-toggle-on: #c4f542;
+  --snug-toggle-off: #33313e;
+  --snug-thumb-on: #17161f;
+  --snug-thumb-off: #f2f0f5;
+  --snug-placeholder: #77748a;
+  --snug-focus: #c4f542;
+  --snug-chip: #25232f;
+  --snug-divider: #3a3745;
+  --snug-ring-glow: rgba(196, 245, 66, 0.7);
+  --snug-avatar-overlay: rgba(0, 0, 0, 0.18);
+
+  --font-display: var(--font-sora);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-snug-bg: var(--snug-bg);
+  --color-snug-surface: var(--snug-surface);
+  --color-snug-surface-tint: var(--snug-surface-tint);
+  --color-snug-text: var(--snug-text);
+  --color-snug-muted: var(--snug-muted);
+  --color-snug-mint: var(--snug-mint);
+  --color-snug-pink: var(--snug-pink);
+  --color-snug-peach: var(--snug-peach);
+  --color-snug-gold: var(--snug-gold);
+  --color-snug-on-accent: var(--snug-on-accent);
+  --color-snug-primary: var(--snug-primary);
+  --color-snug-primary-text: var(--snug-primary-text);
+  --color-snug-disabled: var(--snug-disabled);
+  --color-snug-scroll-thumb: var(--snug-scroll-thumb);
+  --color-snug-toggle-on: var(--snug-toggle-on);
+  --color-snug-toggle-off: var(--snug-toggle-off);
+  --color-snug-thumb-on: var(--snug-thumb-on);
+  --color-snug-thumb-off: var(--snug-thumb-off);
+  --color-snug-placeholder: var(--snug-placeholder);
+  --color-snug-focus: var(--snug-focus);
+  --color-snug-chip: var(--snug-chip);
+  --color-snug-divider: var(--snug-divider);
+
+  --shadow-snug-card: var(--snug-shadow-card);
+  --shadow-snug-popover: var(--snug-shadow-popover);
+
+  --font-body: var(--font-nunito);
+  --font-display: var(--font-display);
+  --font-brand: var(--font-baloo);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html[data-theme-switching] * {
+  transition: none !important;
+}
+
+[data-theme="dark"] .light-only {
+  display: none;
+}
+
+/* Desktop app only (see DesktopTitleBar.tsx) — the compact join/create and
+   My Rooms windows are transparent BrowserWindows with no OS chrome at all,
+   so the page's own solid background has to get out of the way too, or it'd
+   just repaint the boxed-in "window" rectangle the transparency removes.
+   Full/room mode never gets this class — its own UI already covers every
+   pixel of the window, so staying opaque there is what keeps it looking
+   like a normal app instead of a hole into the desktop. */
+body.desktop-window-transparent {
+  background: transparent;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes talkRingPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--snug-ring-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.talk-ring {
+  animation: talkRingPulse 1.4s infinite;
+}
+
+@keyframes waveBar {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.wave-bar {
+  width: 3px;
+  border-radius: 2px;
+  display: inline-block;
+  animation: waveBar 0.85s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talk-ring {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--snug-ring-glow);
+  }
+  .wave-bar {
+    animation: none;
+    transform: scaleY(0.75);
+  }
+}
+
+.snug-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--snug-divider);
+  outline: none;
+}
+
+.snug-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--snug-mint);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.snug-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--snug-mint);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Playful, springy entrances for whole screens/cards and popovers/modals —
+   the shared "fun and reactive" motion language. Tailwind's arbitrary
+   animate-[name_duration_easing] syntax picks these up directly (see
+   fadeIn/toastIn above for the established pattern); no config changes
+   needed. Kept short on purpose — nothing here runs past ~320ms. */
+@keyframes cardPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Small anchored popovers (right-click menus, dropdowns) — quicker and a
+   touch less dramatic than modalPopIn's centered-dialog pop. */
+@keyframes popoverIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Plays on the home card right before navigating to /room/[code] — a real
+   Next.js route change unmounts this page outright, so there's no way to
+   cross-fade into the room screen itself, but giving the card somewhere to
+   go (instead of it just vanishing mid-click) already reads as a much
+   smoother handoff. Mirrors cardPopIn's translateY so it looks like the
+   reverse of the same motion. */
+@keyframes cardPopOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+}
+
+@keyframes modalPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modalPopOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlayFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* For the home screen's settings view replacing the join/create form in
+   place (see page.tsx) — direction implies whether it's being opened
+   (content slides in from the right, like pushing onto a stack) or
+   returned from via the back button (slides in from the left). */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+  }
+}
+
+/* A tactile baseline for every button/link in the app, so nothing is left
+   totally static on hover/press — deliberately LOW specificity (bare
+   element selectors) so any component's own explicit hover:/active:
+   utility classes (Tailwind class selectors always outrank these) still
+   win and this only fills the gaps. */
+@media (hover: hover) {
+  button:hover,
+  a[href]:hover {
+    filter: brightness(1.07);
+  }
+}
+
+button,
+a[href] {
+  transition:
+    transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 150ms ease;
+}
+
+button:active,
+a[href]:active {
+  transform: scale(0.95);
+}
+
+* {
+  scrollbar-color: var(--snug-scroll-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: var(--snug-text);
+  color: var(--snug-bg);
 }

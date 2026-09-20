@@ -1,0 +1,17 @@
+# Builds and runs ONLY the signaling server (server/index.mjs) — not the
+# Next.js app. Explicit Dockerfile instead of relying on Railway's
+# auto-detected build/start commands, which kept picking "next build" /
+# "next start" since this repo's package.json also contains the frontend.
+FROM node:22-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev
+COPY server ./server
+
+EXPOSE 3001
+CMD ["node", "server/index.mjs"]

@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local database
+/server/snug.db
+
+# uploaded chat attachments
+/server/uploads/*
+!/server/uploads/.gitkeep
+
+.vercel
+.env*
