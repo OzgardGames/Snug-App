@@ -50,17 +50,33 @@
   // most people will actually use. MediaRecorder's H.264 path demonstrably
   // does get hardware encoding at 4K60, so segments + ffmpeg concat is what
   // actually preserves that.)
-  const CANDIDATE_MIME_TYPES = [
-    "video/mp4;codecs=avc1.640034",
-    "video/mp4;codecs=avc1.640028",
-    "video/mp4;codecs=avc1",
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-  ];
+  //
+  // Two lists because the mime type has to match what the stream actually
+  // carries: naming an audio codec for a stream with no audio track (or the
+  // reverse) is how you get a recorder that starts and then produces
+  // nothing useful. mp4a.40.2 is AAC-LC, the audio counterpart to the H.264
+  // above; opus is WebM's.
+  const CANDIDATE_MIME_TYPES = {
+    withAudio: [
+      "video/mp4;codecs=avc1.640034,mp4a.40.2",
+      "video/mp4;codecs=avc1.640028,mp4a.40.2",
+      "video/mp4;codecs=avc1,mp4a.40.2",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ],
+    videoOnly: [
+      "video/mp4;codecs=avc1.640034",
+      "video/mp4;codecs=avc1.640028",
+      "video/mp4;codecs=avc1",
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+    ],
+  };
 
-  function pickMimeType() {
-    for (const type of CANDIDATE_MIME_TYPES) {
+  function pickMimeType(hasAudio) {
+    for (const type of hasAudio ? CANDIDATE_MIME_TYPES.withAudio : CANDIDATE_MIME_TYPES.videoOnly) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
     return "video/webm";
@@ -117,7 +133,8 @@
   // operation done with ffmpeg in main.js, not by gluing blobs together.
   function startSegment() {
     if (restartTimer) clearTimeout(restartTimer);
-    const mimeType = pickMimeType();
+    const hasAudio = mediaStream.getAudioTracks().length > 0;
+    const mimeType = pickMimeType(hasAudio);
     // The track's own settings reflect what was ACTUALLY negotiated, which
     // for resolution: "auto" is whatever the screen's native size turned
     // out to be — nothing upstream of this ever computed that number, so
@@ -131,10 +148,15 @@
     const recorder = new MediaRecorder(mediaStream, {
       mimeType,
       videoBitsPerSecond: bitrateForCapture(actualHeight, currentFps),
+      // Only meaningful when there's an audio track; harmless otherwise.
+      // 160kbps stereo AAC/Opus is transparent enough for game audio and
+      // rounds to nothing next to the video bitrate above.
+      audioBitsPerSecond: 160_000,
     });
     recorder.mimeType_ = mimeType;
     recorder.width_ = actualWidth;
     recorder.height_ = actualHeight;
+    recorder.hasAudio_ = hasAudio;
     recorder.chunks_ = [];
     recorder.startMs_ = Date.now();
     recorder.ondataavailable = (e) => {
@@ -174,6 +196,7 @@
             width: recorder.width_,
             height: recorder.height_,
             fps: currentFps,
+            hasAudio: recorder.hasAudio_,
             startMs: recorder.startMs_,
             endMs,
           });
@@ -219,10 +242,33 @@
         mandatory.minHeight = config.height;
         mandatory.maxHeight = config.height;
       }
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { mandatory },
-      });
+      // Desktop loopback ("System Audio") — game sound plus anyone you can
+      // hear in the room, since their voices are already playing out of
+      // your speakers. Your OWN mic isn't in here: it never reaches the
+      // loopback device, and mixing it in would need a whole Web Audio
+      // graph on top.
+      //
+      // Requested as a SEPARATE attempt rather than as part of one call,
+      // because a machine with no loopback device fails the whole
+      // getUserMedia — which would take the video down with it and leave
+      // instant replay silently dead. Video-only is the fallback, not the
+      // failure.
+      if (config.captureAudio) {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { mandatory: { chromeMediaSource: "desktop" } },
+            video: { mandatory },
+          });
+        } catch (audioErr) {
+          console.warn("[snug instant-replay] no system audio, recording video only", audioErr);
+        }
+      }
+      if (!mediaStream) {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { mandatory },
+        });
+      }
       startSegment();
     } catch (err) {
       console.error("[snug instant-replay] failed to start capture", err);

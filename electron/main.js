@@ -372,7 +372,25 @@ const RECORDING_SETTINGS_FILE = path.join(app.getPath("userData"), "recording-se
 // height constraint passed at all, so Chromium captures at the source's
 // own native resolution, 4K screen or otherwise) or one of
 // RESOLUTION_PRESETS' keys to force a specific one instead.
-const DEFAULT_RECORDING_SETTINGS = { enabled: false, bufferSeconds: 30, resolution: "auto", fps: 60 };
+const DEFAULT_RECORDING_SETTINGS = {
+  enabled: false,
+  bufferSeconds: 30,
+  resolution: "auto",
+  fps: 60,
+  // Desktop loopback audio — game sound and anyone you can hear in the
+  // room. On by default: a silent gameplay clip is half a clip.
+  captureAudio: true,
+  // Ceiling for the saved-clips folder in GB; oldest clips are removed once
+  // it's exceeded. 0 (the default) means keep everything.
+  //
+  // Deliberately OFF by default. These are clips someone chose to save —
+  // the whole point of the feature — not a cache, and a default that
+  // quietly deletes them is the wrong trade even when the folder gets
+  // large. Turning it on is a decision the person makes knowing what it
+  // does. (Learned the hard way: an earlier 10GB default, exercised during
+  // testing, destroyed real recordings.)
+  maxStorageGb: 0,
+};
 const RESOLUTION_PRESETS = {
   720: { width: 1280, height: 720 },
   1080: { width: 1920, height: 1080 },
@@ -488,6 +506,7 @@ async function startRecording() {
     sourceId,
     segmentSeconds: SEGMENT_SECONDS,
     fps: recordingSettings.fps,
+    captureAudio: recordingSettings.captureAudio !== false,
     width: preset?.width ?? null,
     height: preset?.height ?? null,
   });
@@ -519,12 +538,12 @@ function pruneSegmentRing() {
   }
 }
 
-async function handleSegmentReady({ arrayBuffer, extension, mimeType, width, height, fps, startMs, endMs }) {
+async function handleSegmentReady({ arrayBuffer, extension, mimeType, width, height, fps, hasAudio, startMs, endMs }) {
   try {
     await fs.promises.mkdir(SEGMENTS_DIR, { recursive: true });
     const file = path.join(SEGMENTS_DIR, `seg-${segmentSeq++}.${extension}`);
     await fs.promises.writeFile(file, Buffer.from(arrayBuffer));
-    segmentRing.push({ file, mimeType, width, height, fps, startMs, endMs });
+    segmentRing.push({ file, mimeType, width, height, fps, hasAudio, startMs, endMs });
     pruneSegmentRing();
   } catch (err) {
     console.error("[snug-desktop] failed to persist instant-replay segment:", err);
@@ -551,7 +570,8 @@ function selectSegmentsForConcat() {
       seg.width !== newest.width ||
       seg.height !== newest.height ||
       seg.fps !== newest.fps ||
-      seg.mimeType !== newest.mimeType
+      seg.mimeType !== newest.mimeType ||
+      seg.hasAudio !== newest.hasAudio
     ) {
       break;
     }
@@ -582,17 +602,54 @@ async function buildClipFromRing() {
   );
   const listPath = path.join(SEGMENTS_DIR, `concat-${Date.now()}.txt`);
   await fs.promises.writeFile(listPath, segments.map((s) => concatListLine(s.file)).join("\n"), "utf8");
+  // Video is stream-copied — it's the expensive part, it's already encoded
+  // exactly how we want it, and re-encoding would cost both quality and CPU
+  // for nothing.
+  //
+  // Audio is re-encoded, deliberately. Each segment is an independent AAC
+  // stream with its own encoder priming samples at the front, and copying
+  // them end to end leaves those priming frames embedded mid-file: real
+  // output showed decoder errors ("Invalid data found") and non-monotonic
+  // timestamps at every segment boundary, which is a click or a stutter
+  // every few seconds. Decoding and re-encoding produces one continuous,
+  // properly-timed track instead, and for a clip this short it's a
+  // negligible amount of work next to the copy.
+  //
+  // -avoid_negative_ts make_zero normalizes the joined timeline so the file
+  // starts at zero rather than inheriting a segment's own offsets.
+  //
+  // Known and accepted: the copied video stream still carries a handful of
+  // duplicate DTS values at the segment seams, because that's how the
+  // segments come out of MediaRecorder. Every frame decodes, the frame
+  // count and duration are correct, and players handle it — only a strict
+  // re-mux complains. Clearing it properly would mean re-encoding video,
+  // which is exactly the hardware-encoded quality and CPU saving this
+  // whole design exists to protect. (-fflags +genpts was tried and barely
+  // moved it, so it isn't here.)
+  const ffmpegArgs = [
+    "-y",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    listPath,
+    "-c:v",
+    "copy",
+    "-avoid_negative_ts",
+    "make_zero",
+  ];
+  if (segments[0].hasAudio) ffmpegArgs.push("-c:a", "aac", "-b:a", "160k");
+  ffmpegArgs.push(outputPath);
+
   try {
     await new Promise((resolve, reject) => {
-      execFile(
-        ffmpegPath,
-        ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outputPath],
-        (err, _stdout, stderr) => {
-          if (err) reject(new Error(stderr?.toString().slice(-500) || err.message));
-          else resolve();
-        },
-      );
+      execFile(ffmpegPath, ffmpegArgs, (err, _stdout, stderr) => {
+        if (err) reject(new Error(stderr?.toString().slice(-500) || err.message));
+        else resolve();
+      });
     });
+    await enforceStorageCap();
     return { ok: true, path: outputPath };
   } catch (err) {
     return {
@@ -601,6 +658,61 @@ async function buildClipFromRing() {
     };
   } finally {
     fs.unlink(listPath, () => {});
+  }
+}
+
+// Saved clips, oldest first. Only files this app writes are considered —
+// anything else a person has put in that folder is theirs and is neither
+// counted nor deleted.
+async function listSavedClips() {
+  try {
+    const names = await fs.promises.readdir(RECORDINGS_DIR);
+    const clips = await Promise.all(
+      names
+        .filter((n) => /^snug-replay-.*\.(mp4|webm)$/i.test(n))
+        .map(async (name) => {
+          const file = path.join(RECORDINGS_DIR, name);
+          try {
+            const stat = await fs.promises.stat(file);
+            return { file, size: stat.size, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        }),
+    );
+    return clips.filter(Boolean).sort((a, b) => a.mtimeMs - b.mtimeMs);
+  } catch {
+    return [];
+  }
+}
+
+// Deletes the oldest clips until the folder is back under the cap. Nothing
+// else prunes these — segments are temp files that clean themselves up, but
+// finished clips accumulate forever, and at roughly a megabyte per second
+// of 4K footage that turns into tens of gigabytes quietly. 0 disables the
+// cap for anyone who would rather manage the folder themselves.
+async function enforceStorageCap() {
+  const capGb = recordingSettings.maxStorageGb ?? DEFAULT_RECORDING_SETTINGS.maxStorageGb;
+  if (!capGb || capGb <= 0) return;
+  const capBytes = capGb * 1024 * 1024 * 1024;
+  const clips = await listSavedClips();
+  let total = clips.reduce((sum, c) => sum + c.size, 0);
+  for (const clip of clips) {
+    if (total <= capBytes) break;
+    try {
+      // shell.trashItem, not fs.unlink: these are things a person chose to
+      // keep, so an automatic sweep has to be recoverable. Sending them to
+      // the Recycle Bin means a cap set too aggressively is an annoyance
+      // rather than permanent data loss.
+      await shell.trashItem(clip.file);
+      total -= clip.size;
+      console.log(
+        `[snug-desktop] instant replay over ${capGb}GB — moved ${path.basename(clip.file)} to the Recycle Bin`,
+      );
+    } catch {
+      // Locked by a player or already gone — skip it and keep going rather
+      // than aborting the whole sweep.
+    }
   }
 }
 
@@ -733,6 +845,29 @@ function buildTrayMenu() {
       click: () => toggleOverlay(),
     },
     { type: "separator" },
+    // Instant replay captures the screen continuously with no window and
+    // no visible sign of it. Somebody who forgot they switched it on
+    // deserves to be able to find that out — and to switch it back off
+    // without hunting through Settings.
+    ...(recordingSettings.enabled
+      ? [
+          {
+            label: "Instant replay is recording — turn off",
+            click: () => {
+              recordingSettings = { ...recordingSettings, enabled: false };
+              saveRecordingSettings();
+              stopRecording();
+              refreshTrayMenu();
+              mainWindow?.webContents.send("recording:settings-changed", recordingSettings);
+            },
+          },
+          {
+            label: "Save instant replay",
+            click: () => triggerSaveClip(),
+          },
+          { type: "separator" },
+        ]
+      : []),
     {
       label: "Quit Snug",
       click: () => {
@@ -747,6 +882,7 @@ function createTray() {
   const iconPath = path.join(__dirname, "..", "assets", "tray-icon.png");
   tray = new Tray(nativeImage.createFromPath(iconPath));
   tray.setToolTip("Snug");
+  refreshTrayTooltip();
   tray.setContextMenu(buildTrayMenu());
   tray.on("click", () => {
     if (!mainWindow) return;
@@ -756,6 +892,11 @@ function createTray() {
 
 function refreshTrayMenu() {
   tray?.setContextMenu(buildTrayMenu());
+  refreshTrayTooltip();
+}
+
+function refreshTrayTooltip() {
+  tray?.setToolTip(recordingSettings.enabled ? "Snug — instant replay is recording" : "Snug");
 }
 
 // The whole point of these is working without switching focus to Snug —
@@ -983,15 +1124,20 @@ ipcMain.handle("recording:set-settings", (_event, next) => {
   const wasEnabled = recordingSettings.enabled;
   const prevResolution = recordingSettings.resolution;
   const prevFps = recordingSettings.fps;
+  const prevCaptureAudio = recordingSettings.captureAudio;
   recordingSettings = { ...recordingSettings, ...next };
   saveRecordingSettings();
+  // The tray states whether capture is live, so it has to hear about this.
+  refreshTrayMenu();
   if (recordingSettings.enabled && !wasEnabled) {
     startRecording();
   } else if (!recordingSettings.enabled && wasEnabled) {
     stopRecording();
   } else if (
     recordingSettings.enabled &&
-    (recordingSettings.resolution !== prevResolution || recordingSettings.fps !== prevFps)
+    (recordingSettings.resolution !== prevResolution ||
+      recordingSettings.fps !== prevFps ||
+      recordingSettings.captureAudio !== prevCaptureAudio)
   ) {
     // Resolution/fps changed while already running — these change the
     // encoder config, so segments already in the ring are no longer
@@ -1011,6 +1157,19 @@ ipcMain.on("recording:save-clip", () => triggerSaveClip());
 ipcMain.handle("recording:open-folder", async () => {
   await fs.promises.mkdir(RECORDINGS_DIR, { recursive: true }).catch(() => {});
   return shell.openPath(RECORDINGS_DIR);
+});
+
+// What the folder currently holds, so Settings can show it rather than
+// leaving people to discover tens of gigabytes on their own — at 4K a clip
+// runs roughly a megabyte per second, which adds up much faster than it
+// feels like it should.
+ipcMain.handle("recording:get-usage", async () => {
+  const clips = await listSavedClips();
+  return {
+    count: clips.length,
+    bytes: clips.reduce((sum, c) => sum + c.size, 0),
+    capGb: recordingSettings.maxStorageGb ?? DEFAULT_RECORDING_SETTINGS.maxStorageGb,
+  };
 });
 
 // Every finished segment recording.html produces (periodic or

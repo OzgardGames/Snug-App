@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld("snugDesktop", {
   saveReplayNow: () => ipcRenderer.send("recording:save-clip"),
   openRecordingsFolder: () => ipcRenderer.invoke("recording:open-folder"),
   onRecordingSaved: subscribeWithValue("recording:saved"),
+  getRecordingUsage: () => ipcRenderer.invoke("recording:get-usage"),
+  // Pushed when something OUTSIDE Settings changes these — today that's
+  // the tray's "turn off" item, which would otherwise leave an open
+  // Settings panel showing a stale toggle.
+  onRecordingSettingsChanged: subscribeWithValue("recording:settings-changed"),
 });
 
 function subscribeWithValue(channel) {
