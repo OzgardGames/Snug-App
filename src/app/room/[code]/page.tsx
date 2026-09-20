@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type MouseEvent } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SnugMark } from "@/components/SnugMark";
 import { SharePickerModal } from "@/components/SharePickerModal";
@@ -665,6 +665,18 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     setContextMenuFor({ memberId, x: e.clientX, y: e.clientY });
   }
 
+  // Per-member volume and mute used to be right-click only, which left them
+  // unreachable by keyboard entirely (and on a touchscreen). This opens the
+  // same menu from a focused tile, anchored to the tile itself since there's
+  // no pointer position to use.
+  function handleTileKeyDown(e: ReactKeyboardEvent<HTMLElement>, memberId: string) {
+    if (memberId === selfId) return;
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "ContextMenu") return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenuFor({ memberId, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  }
+
   function handleToggleLocalMute(memberId: string) {
     setLocalMutes((prev) => ({ ...prev, [memberId]: !prev[memberId] }));
   }
@@ -1146,7 +1158,12 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                       <div
                         key={p.id}
                         onContextMenu={(e) => handleTileContextMenu(e, p.id)}
-                        className="relative flex flex-shrink-0 items-center gap-1.5 rounded-full bg-snug-chip py-1 pr-3 pl-1"
+                        onKeyDown={(e) => handleTileKeyDown(e, p.id)}
+                        tabIndex={isYou ? undefined : 0}
+                        role={isYou ? undefined : "button"}
+                        aria-haspopup={isYou ? undefined : "menu"}
+                        aria-label={isYou ? undefined : `${p.name} — volume and mute options`}
+                        className="relative flex flex-shrink-0 items-center gap-1.5 rounded-full bg-snug-chip py-1 pr-3 pl-1 focus-visible:ring-2 focus-visible:ring-snug-focus focus-visible:outline-none"
                         style={{
                           boxShadow: pMuted ? "0 0 0 2px var(--snug-pink)" : "none",
                           ...(isDesktop ? noDragRegion : undefined),
@@ -1226,7 +1243,12 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                 <div
                   key={member.id}
                   onContextMenu={(e) => handleTileContextMenu(e, member.id)}
-                  className="relative flex flex-col items-center gap-2.5 rounded-[26px] px-2.5 pt-5 pb-4 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5"
+                  onKeyDown={(e) => handleTileKeyDown(e, member.id)}
+                  tabIndex={isYou ? undefined : 0}
+                  role={isYou ? undefined : "button"}
+                  aria-haspopup={isYou ? undefined : "menu"}
+                  aria-label={isYou ? undefined : `${member.name} — volume and mute options`}
+                  className="relative flex flex-col items-center gap-2.5 rounded-[26px] px-2.5 pt-5 pb-4 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-snug-focus focus-visible:outline-none"
                   style={{
                     background: cardBg,
                     boxShadow: memberMuted ? "0 0 0 3px var(--snug-pink)" : "none",

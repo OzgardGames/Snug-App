@@ -21,7 +21,12 @@ export type RecordingSettings = {
   bufferSeconds: number;
   resolution: RecordingResolution;
   fps: 30 | 60;
+  /** Desktop loopback audio — game sound plus anyone audible in the room. */
+  captureAudio: boolean;
+  /** Ceiling for the saved-clips folder, in GB. 0 keeps everything. */
+  maxStorageGb: number;
 };
+export type RecordingUsage = { count: number; bytes: number; capGb: number };
 export type RecordingSaveResult = { ok: true; path: string } | { ok: false; error: string };
 
 export type SnugDesktopBridge = {
@@ -51,6 +56,8 @@ export type SnugDesktopBridge = {
   saveReplayNow: () => void;
   openRecordingsFolder: () => Promise<string>;
   onRecordingSaved: (callback: (result: RecordingSaveResult) => void) => () => void;
+  getRecordingUsage: () => Promise<RecordingUsage>;
+  onRecordingSettingsChanged: (callback: (settings: RecordingSettings) => void) => () => void;
 };
 
 export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";

@@ -20,9 +20,12 @@ export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 // the mounted volume) — a file only ever lives here for as long as it
 // takes to upload it to R2 (or, for video, to also compress it first).
 const TMP_DIR = path.join(tmpdir(), "snug-uploads");
-// No auth on this server, so some ceiling stays — 1GB comfortably covers a
-// real phone video (compression then shrinks it further after upload).
-const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
+// No auth on this server beyond room membership, so the ceiling doubles as
+// the disk-fill guard on a small mounted volume. 250MB still covers a real
+// phone video comfortably (compression shrinks it further after upload);
+// 1GB per file, which this used to allow, meant a handful of uploads could
+// fill the volume.
+const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
 const MAX_PREVIEW_FETCH_BYTES = 200 * 1024;
 
 await mkdir(UPLOADS_DIR, { recursive: true });
@@ -69,7 +72,13 @@ const MIME_BY_EXT = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
-  ".svg": "image/svg+xml",
+  // .svg is deliberately absent. An SVG is a document that can carry
+  // <script>, and uploads are served straight from this origin. Leaving it
+  // off this list doesn't stop someone naming a file .svg — it means the
+  // file is served as application/octet-stream instead of image/svg+xml,
+  // which (with the nosniff header below) makes browsers download it
+  // rather than render and execute it. Every other image type here is
+  // inert.
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
@@ -81,7 +90,17 @@ const MIME_BY_EXT = {
   ".zip": "application/zip",
 };
 
-function extFor(name, mime) {
+// The single place that answers "what Content-Type is a stored file served
+// as". Anything not on the allowlist becomes an inert octet-stream rather
+// than whatever the uploader claimed — that plus the nosniff header is
+// what stops a file being served back as something a browser executes.
+export function contentTypeForExt(ext) {
+  return MIME_BY_EXT[String(ext || "").toLowerCase()] || "application/octet-stream";
+}
+
+// Exported for its own tests: this is the allowlist that decides what
+// extension ever reaches disk, so it's worth pinning down directly.
+export function extFor(name, mime) {
   const fromName = path.extname(name || "").toLowerCase();
   if (fromName && /^\.[a-z0-9]{1,8}$/.test(fromName)) return fromName;
   const fromMime = Object.entries(MIME_BY_EXT).find(([, m]) => m === mime)?.[0];
@@ -244,8 +263,16 @@ function handleUpload(req, res, allowedOrigins, isRoomMember) {
     }
 
     const { filename, mimeType } = info;
-    const mime = mimeType || "application/octet-stream";
-    const ext = extFor(filename, mime);
+    const ext = extFor(filename, mimeType);
+    // Derived from the extension allowlist, NOT from what the client
+    // claimed. This is what R2 stores as the object's Content-Type and
+    // therefore what it serves the file as later — taking the client's
+    // word for it meant a room member could have anything served back
+    // under any type they liked, including one browsers execute. The
+    // local-disk path already looked the type up this way at serve time;
+    // now both agree, and anything not on the list is served as an inert
+    // octet-stream.
+    const mime = contentTypeForExt(ext);
     const diskFilename = `${crypto.randomUUID()}${ext}`;
     savedPath = path.join(r2Enabled ? TMP_DIR : UPLOADS_DIR, diskFilename);
     fileInfo = { filename, mime, diskFilename };
@@ -388,7 +415,7 @@ async function handleServeUpload(req, res, requestPath) {
   try {
     const info = await stat(filePath);
     const ext = path.extname(filename).toLowerCase();
-    const contentType = MIME_BY_EXT[ext] || "application/octet-stream";
+    const contentType = contentTypeForExt(ext);
     const range = req.headers.range;
 
     if (range) {
@@ -402,6 +429,7 @@ async function handleServeUpload(req, res, requestPath) {
       }
       res.writeHead(206, {
         "content-type": contentType,
+        "x-content-type-options": "nosniff",
         "content-length": end - start + 1,
         "content-range": `bytes ${start}-${end}/${info.size}`,
         "accept-ranges": "bytes",
@@ -413,6 +441,7 @@ async function handleServeUpload(req, res, requestPath) {
 
     res.writeHead(200, {
       "content-type": contentType,
+      "x-content-type-options": "nosniff",
       "content-length": info.size,
       "accept-ranges": "bytes",
       "cache-control": "public, max-age=31536000, immutable",

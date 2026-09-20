@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useModalDialog } from "@/hooks/useModalDialog";
 import { Toggle } from "@/components/Toggle";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { colorForId, initialFor } from "@/lib/participantColor";
 import { MAX_ROOM_MEMBERS, type RoomMember } from "@/lib/socket";
 
@@ -54,7 +55,6 @@ export function ManageRoomModal({
     setNameInput(roomName);
   }, [roomName]);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [passcodeOpen, setPasscodeOpen] = useState(false);
   const [passcodeInput, setPasscodeInput] = useState("");
   const [passcodeErr, setPasscodeErr] = useState<string | null>(null);
@@ -65,11 +65,6 @@ export function ManageRoomModal({
     CLOSE_ANIMATION_MS,
   );
 
-  useEffect(() => {
-    return () => {
-      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-    };
-  }, []);
 
   function commitName() {
     const trimmed = nameInput.trim();
@@ -104,15 +99,6 @@ export function ManageRoomModal({
     setPasscodeOpen(false);
   }
 
-  function handleEndClick() {
-    if (confirmEnd) {
-      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-      onEndRoom();
-      return;
-    }
-    setConfirmEnd(true);
-    confirmTimeoutRef.current = setTimeout(() => setConfirmEnd(false), 4000);
-  }
 
   return (
     <div
@@ -358,7 +344,7 @@ export function ManageRoomModal({
             </div>
             <button
               type="button"
-              onClick={handleEndClick}
+              onClick={() => setConfirmEnd(true)}
               className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 transition active:scale-[0.98]"
               style={{ background: "var(--snug-surface-tint)" }}
             >
@@ -368,11 +354,7 @@ export function ManageRoomModal({
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
               <span className="text-[13.5px] font-bold" style={{ color: "var(--snug-pink)" }}>
-                {confirmEnd
-                  ? "Click again to confirm"
-                  : persistent
-                    ? "Delete Room"
-                    : "End Room Now"}
+                {persistent ? "Delete Room" : "End Room Now"}
               </span>
             </button>
           </section>
@@ -389,6 +371,27 @@ export function ManageRoomModal({
           </button>
         </div>
       </div>
+
+      {/* The same destructive action from My Rooms already went through
+          this dialog; here it used to be a click-twice-within-4s button,
+          so the app asked for confirmation two different ways depending on
+          where you happened to be standing. */}
+      {confirmEnd && (
+        <ConfirmDialog
+          title={persistent ? "Delete this room?" : "End this room?"}
+          description={
+            persistent
+              ? "The room, its code and its chat history are removed for everyone. This can't be undone."
+              : "Everyone is disconnected and the room closes immediately. This can't be undone."
+          }
+          confirmLabel={persistent ? "Delete room" : "End room"}
+          onConfirm={() => {
+            setConfirmEnd(false);
+            onEndRoom();
+          }}
+          onCancel={() => setConfirmEnd(false)}
+        />
+      )}
     </div>
   );
 }

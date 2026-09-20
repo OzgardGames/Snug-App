@@ -3,10 +3,28 @@
 import { useEffect, useState } from "react";
 import { Toggle } from "@/components/Toggle";
 import { getDesktopBridge } from "@/lib/desktopBridge";
-import type { RecordingResolution, RecordingSettings as RecordingSettingsValue } from "@/lib/desktopBridge";
+import type {
+  RecordingResolution,
+  RecordingSettings as RecordingSettingsValue,
+  RecordingUsage,
+} from "@/lib/desktopBridge";
 
 const BUFFER_OPTIONS = [10, 20, 30] as const;
 const FPS_OPTIONS = [30, 60] as const;
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+// "No limit" leads because it's the default: these are clips someone chose
+// to keep, so trimming them is opt-in, not something that happens quietly.
+const STORAGE_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: "No limit" },
+  { value: 5, label: "5 GB" },
+  { value: 10, label: "10 GB" },
+  { value: 25, label: "25 GB" },
+];
 const RESOLUTION_OPTIONS: { value: RecordingResolution; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: 720, label: "720p" },
@@ -22,6 +40,11 @@ export function RecordingSettings() {
   const [settings, setSettings] = useState<RecordingSettingsValue | null>(null);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [usage, setUsage] = useState<RecordingUsage | null>(null);
+
+  function refreshUsage() {
+    getDesktopBridge()?.getRecordingUsage().then(setUsage).catch(() => {});
+  }
 
   useEffect(() => {
     getDesktopBridge()
@@ -37,7 +60,21 @@ export function RecordingSettings() {
       setTestResult(
         result.ok ? { ok: true, message: `Saved: ${result.path}` } : { ok: false, message: result.error },
       );
+      // A save just changed what's on disk, and may have pruned older
+      // clips to stay under the cap.
+      refreshUsage();
     });
+  }, []);
+
+  // The tray can turn recording off without going through this panel.
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    return bridge.onRecordingSettingsChanged(setSettings);
+  }, []);
+
+  useEffect(() => {
+    refreshUsage();
   }, []);
 
   function update(next: Partial<RecordingSettingsValue>) {
@@ -142,6 +179,52 @@ export function RecordingSettings() {
                       }}
                     >
                       {fps} fps
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
+              <div className="min-w-0 pr-3">
+                <div className="text-[13.5px] font-bold text-snug-text">Record system audio</div>
+                <div className="text-[11px] font-bold text-snug-muted">
+                  Game sound and anyone you can hear in the room. Your own mic isn&apos;t included.
+                </div>
+              </div>
+              <Toggle
+                checked={settings.captureAudio}
+                onChange={() => update({ captureAudio: !settings.captureAudio })}
+                label="Record system audio"
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
+              <div className="min-w-0 pr-3">
+                <div className="text-[13.5px] font-bold text-snug-text">Keep at most</div>
+                <div className="text-[11px] font-bold text-snug-muted">
+                  {usage ? `${formatBytes(usage.bytes)} in ${usage.count} clip${usage.count === 1 ? "" : "s"}` : "Saved clips"}
+                  {settings.maxStorageGb > 0
+                    ? " — over the limit, the oldest go to the Recycle Bin"
+                    : " — nothing is removed automatically"}
+                </div>
+              </div>
+              <div className="flex flex-shrink-0 flex-wrap justify-end gap-1.5">
+                {STORAGE_OPTIONS.map(({ value, label }) => {
+                  const active = settings.maxStorageGb === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => update({ maxStorageGb: value })}
+                      className="rounded-xl px-3 py-1.5 text-[12.5px] font-extrabold transition active:scale-95 disabled:opacity-60"
+                      style={{
+                        background: active ? "var(--snug-primary)" : "var(--snug-bg)",
+                        color: active ? "var(--snug-primary-text)" : "var(--snug-text)",
+                      }}
+                    >
+                      {label}
                     </button>
                   );
                 })}
