@@ -1,0 +1,44 @@
+# Dependencies — reinstalled from the lockfiles, never committed.
+node_modules/
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# Packaged desktop installers (hundreds of MB per build)
+release/
+
+# Environment / secrets. snug/.gitignore covers its own .env* too, but this
+# is the backstop: nothing named like an env file gets committed from
+# anywhere in the tree.
+.env
+.env.*
+!.env.example
+
+# Credentials of any kind
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data — a local SQLite database and user-uploaded chat files are
+# state, not source.
+snug/server/snug.db
+snug/server/snug.db-journal
+snug/server/snug.db-wal
+snug/server/snug.db-shm
+snug/server/uploads/*
+!snug/server/uploads/.gitkeep
+
+# Logs and debug output
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.tsbuildinfo

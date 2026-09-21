@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #2A2640; text-decoration: underline; }
+    a:hover { color: #000000; }
+    ::selection { background: #2A2640; color: #FFF6EC; }
+    .vmr-btn { transition: transform 0.08s ease, opacity 0.15s ease, background-color 0.15s ease, filter 0.15s ease; cursor: pointer; }
+    .vmr-btn:hover:not(:active) { filter: brightness(1.05); }
+    .vmr-btn:active { transform: scale(0.97); }
+    .vmr-row { transition: background-color 0.15s ease, transform 0.15s ease; }
+    .vmr-row:hover { transform: translateY(-1px); }
+    .vmr-scroll::-webkit-scrollbar { width: 8px; }
+    .vmr-scroll::-webkit-scrollbar-thumb { background: #F5D6C6; border-radius: 8px; }
+    .vmr-scroll::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</helmet>
+
+<div style="position:relative;width:1280px;height:800px;overflow:hidden;background:#FDEEF2;font-family:'Nunito',sans-serif;color:#2A2640;border-radius:18px;">
+
+  <div style="position:absolute;top:-150px;right:-130px;width:420px;height:420px;border-radius:50%;background:#FF6F91;opacity:0.12;filter:blur(60px);"></div>
+  <div style="position:absolute;bottom:-160px;left:120px;width:400px;height:400px;border-radius:50%;background:#38C9A8;opacity:0.12;filter:blur(60px);"></div>
+
+  <div style="position:relative;z-index:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+    <div style="width:520px;max-height:680px;background:#FFFFFF;border-radius:32px;box-shadow:0 20px 50px rgba(42,38,64,0.1);display:flex;flex-direction:column;overflow:hidden;">
+
+      <div style="padding:28px 30px 6px;flex-shrink:0;">
+        <div class="vmr-btn" style="display:flex;align-items:center;gap:6px;width:fit-content;margin-bottom:16px;">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#8A7C8C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          <span style="font-size:12.5px;font-weight:800;color:#8A7C8C;">Home</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-family:'Poppins',sans-serif;font-weight:800;font-size:24px;">My Rooms</div>
+            <div style="font-size:13px;color:#8A7C8C;margin-top:2px;">Persistent rooms you can drop back into anytime.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vmr-scroll" style="flex:1;overflow:auto;padding:14px 20px 8px;display:flex;flex-direction:column;gap:10px;">
+
+        <sc-for list="{{rooms}}" as="r" hint-placeholder-count="3">
+          <div class="vmr-row" style="display:flex;align-items:center;gap:14px;background:#FDEEF2;border-radius:20px;padding:14px 14px 14px 16px;">
+            <div style="position:relative;width:44px;height:44px;flex-shrink:0;">
+              <sc-if value="{{r.isOwner}}" hint-placeholder-val="{{false}}">
+                <div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;background:#FFFFFF;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(42,38,64,0.18);z-index:2;">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="#F0A93A" stroke="none"><path d="M3 18h18l-1.5-9-4.7 3.3L12 5l-2.8 7.3L4.5 9 3 18Z"/></svg>
+                </div>
+              </sc-if>
+              <div style="width:100%;height:100%;border-radius:14px;background:{{r.color}};display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15V9a1 1 0 0 1 1-1h3l4-3v14l-4-3H5a1 1 0 0 1-1-1Z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M18.5 6.5a7 7 0 0 1 0 11"/></svg>
+              </div>
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:14.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{r.name}}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                <span style="font-family:'Poppins',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:0.3px;color:#8A7C8C;">{{r.code}}</span>
+                <span style="font-size:10px;color:#C9BAC2;">·</span>
+                <span style="font-size:11px;color:#8A7C8C;font-weight:700;">{{r.activity}}</span>
+              </div>
+            </div>
+            <div onClick="{{r.join}}" class="vmr-btn" style="flex-shrink:0;font-family:'Poppins',sans-serif;font-weight:700;font-size:12.5px;color:#FFFFFF;background:#2A2640;border-radius:999px;padding:9px 18px;">Join</div>
+          </div>
+        </sc-for>
+
+      </div>
+
+      <div style="padding:12px 20px 22px;flex-shrink:0;">
+        <div onClick="{{createNew}}" class="vmr-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;background:#FDEEF2;border:2px dashed #E7D8CF;border-radius:16px;padding:13px 0;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#2A2640" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span style="font-family:'Poppins',sans-serif;font-weight:700;font-size:13.5px;">Create a new room</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this._rooms = [
+      { id: "friday", name: "Friday Hangout", code: "PLAY-42", color: "#FF6F91", isOwner: true, activity: "Active now" },
+      { id: "gamenight", name: "Game Night Crew", code: "GAME-19", color: "#38C9A8", isOwner: false, activity: "Active yesterday" },
+      { id: "study", name: "Study Group", code: "WORK-07", color: "#B69CE8", isOwner: true, activity: "Active 3 days ago" }
+    ];
+    this.createNew = this.createNew.bind(this);
+  }
+  createNew() {}
+  renderVals() {
+    const rooms = this._rooms.map((r) => ({
+      id: r.id,
+      name: r.name,
+      code: r.code,
+      color: r.color,
+      isOwner: r.isOwner,
+      activity: r.activity,
+      join: () => {}
+    }));
+    return {
+      rooms: rooms,
+      createNew: this.createNew
+    };
+  }
+}
+</script>
+</body>
+</html>

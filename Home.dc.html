@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Baloo+2:wght@700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #2A2640; text-decoration: underline; }
+    a:hover { color: #000000; }
+    ::selection { background: #2A2640; color: #FFF6EC; }
+    .vhm-btn { transition: transform 0.08s ease, opacity 0.15s ease, background-color 0.18s ease, color 0.22s cubic-bezier(0.16,1,0.3,1), filter 0.15s ease; cursor: pointer; }
+    .vhm-btn:hover:not(:active) { filter: brightness(1.05); }
+    .vhm-btn:active { transform: scale(0.97); }
+    .vhm-pill { transition: transform 0.28s cubic-bezier(0.16,1,0.3,1); }
+    @media (prefers-reduced-motion: reduce) {
+      .vhm-pill { transition: none; }
+    }
+    .vhm-input { transition: box-shadow 0.15s ease, background-color 0.15s ease; }
+    .vhm-input::placeholder { color: #B0A3AC; }
+    .vhm-input:focus { outline: none; background: #FFFFFF; box-shadow: 0 0 0 2px #38C9A8; }
+    @keyframes vhmFadeIn {
+      from { opacity: 0; transform: translateY(-3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .vhm-fadein { animation: vhmFadeIn 0.15s cubic-bezier(0.16,1,0.3,1); }
+    @media (prefers-reduced-motion: reduce) {
+      .vhm-fadein { animation: none; }
+    }
+  </style>
+</helmet>
+
+<div style="position:relative;width:1280px;height:800px;overflow:hidden;background:#FDEEF2;font-family:'Nunito',sans-serif;color:#2A2640;border-radius:18px;">
+
+  <div style="position:absolute;top:-150px;right:-130px;width:420px;height:420px;border-radius:50%;background:#FF6F91;opacity:0.12;filter:blur(60px);"></div>
+  <div style="position:absolute;bottom:-160px;left:120px;width:400px;height:400px;border-radius:50%;background:#38C9A8;opacity:0.12;filter:blur(60px);"></div>
+
+  <div style="position:relative;z-index:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+    <div style="position:relative;width:440px;background:#FFFFFF;border-radius:32px;padding:36px 36px 32px;box-shadow:0 20px 50px rgba(42,38,64,0.1);">
+
+      <div onClick="{{openMyRooms}}" class="vhm-btn" style="position:absolute;top:28px;right:28px;display:flex;align-items:center;gap:5px;">
+        <span style="font-size:12px;font-weight:800;color:#8A7C8C;">My Rooms</span>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#8A7C8C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:26px;">
+        <div style="position:relative;width:56px;height:56px;flex-shrink:0;">
+          <div style="position:absolute;inset:0;border-radius:50%;border:4px solid #38C9A8;opacity:0.55;"></div>
+          <div style="position:absolute;top:8px;left:8px;right:8px;bottom:8px;border-radius:50%;border:4px solid #FDBA74;opacity:0.75;"></div>
+          <div style="position:absolute;top:16px;left:16px;right:16px;bottom:16px;border-radius:50%;background:#FF6F91;"></div>
+        </div>
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:28px;color:#2A2640;letter-spacing:-0.01em;">Snug</div>
+        <div style="font-size:13.5px;color:#8A7C8C;text-align:center;">No channels, no setup — just a code and you're in.</div>
+      </div>
+
+      <!-- mode toggle -->
+      <div style="position:relative;display:flex;background:#FDEEF2;border-radius:14px;padding:4px;margin-bottom:20px;">
+        <div class="vhm-pill" style="position:absolute;top:4px;left:4px;width:calc(50% - 4px);height:calc(100% - 8px);border-radius:11px;background:#2A2640;transform:translateX({{tabPillOffset}});pointer-events:none;"></div>
+        <div onClick="{{setJoin}}" class="vhm-btn" style="position:relative;z-index:1;flex:1;text-align:center;padding:9px 0;border-radius:11px;font-family:'Poppins',sans-serif;font-weight:700;font-size:13.5px;color:{{joinTabColor}};">Join a room</div>
+        <div onClick="{{setCreate}}" class="vhm-btn" style="position:relative;z-index:1;flex:1;text-align:center;padding:9px 0;border-radius:11px;font-family:'Poppins',sans-serif;font-weight:700;font-size:13.5px;color:{{createTabColor}};">Create a room</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#8A7C8C;margin-bottom:6px;">Your name</div>
+          <input type="text" value="{{name}}" onChange="{{updateName}}" placeholder="e.g. Jad" class="vhm-input" style="width:100%;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;padding:12px 14px;border-radius:13px;border:none;background:#FDEEF2;color:#2A2640;"/>
+        </div>
+
+        <sc-if value="{{isJoin}}" hint-placeholder-val="{{true}}">
+          <div class="vhm-fadein">
+            <div style="font-size:12px;font-weight:800;color:#8A7C8C;margin-bottom:6px;">Room code</div>
+            <input type="text" value="{{code}}" onChange="{{updateCode}}" placeholder="PLAY-42" class="vhm-input" style="width:100%;font-family:'Poppins',sans-serif;font-weight:700;font-size:15px;letter-spacing:0.5px;padding:12px 14px;border-radius:13px;border:none;background:#FDEEF2;color:#2A2640;"/>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isCreate}}" hint-placeholder-val="{{false}}">
+          <div class="vhm-fadein" style="background:#FDEEF2;border-radius:13px;padding:12px 14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2A2640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span style="font-size:13.5px;font-weight:700;">{{persistLabel}}</span>
+              </div>
+              <div onClick="{{togglePersist}}" class="vhm-btn" style="{{persistTrackStyle}}">
+                <div style="{{persistThumbStyle}}"></div>
+              </div>
+            </div>
+            <div style="font-size:12px;color:#8A7C8C;line-height:1.5;margin-top:8px;">{{persistDescription}}</div>
+          </div>
+        </sc-if>
+
+        <div onClick="{{submit}}" class="vhm-btn" style="text-align:center;margin-top:4px;font-family:'Poppins',sans-serif;font-weight:700;font-size:14.5px;color:{{submitTextColor}};background:{{submitBg}};border-radius:15px;padding:14px 0;">{{submitLabel}}</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: "join", name: "", code: "", persistent: false };
+    this.setJoin = this.setJoin.bind(this);
+    this.setCreate = this.setCreate.bind(this);
+    this.updateName = this.updateName.bind(this);
+    this.updateCode = this.updateCode.bind(this);
+    this.togglePersist = this.togglePersist.bind(this);
+    this.submit = this.submit.bind(this);
+    this.openMyRooms = this.openMyRooms.bind(this);
+  }
+  setJoin() { this.setState({ mode: "join" }); }
+  setCreate() { this.setState({ mode: "create" }); }
+  updateName(e) { this.setState({ name: e.target.value }); }
+  updateCode(e) { this.setState({ code: e.target.value }); }
+  togglePersist() { this.setState({ persistent: !this.state.persistent }); }
+  submit() {}
+  openMyRooms() {}
+  renderVals() {
+    const s = this.state;
+    const isJoin = s.mode === "join";
+    const ready = s.name.trim().length > 0 && (!isJoin || s.code.trim().length > 0);
+    const persistTrackStyle = "width:40px;height:23px;border-radius:999px;position:relative;background:" + (s.persistent ? "#38C9A8" : "#E7D8CF") + ";transition:background 0.15s ease;";
+    const persistThumbStyle = "position:absolute;top:2px;left:" + (s.persistent ? "19px" : "2px") + ";width:19px;height:19px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.22), 0 0 0 1px rgba(42,38,64,0.14);transition:left 0.15s ease;";
+    return {
+      isJoin: isJoin,
+      isCreate: !isJoin,
+      name: s.name,
+      code: s.code,
+      tabPillOffset: isJoin ? "0" : "100%",
+      joinTabColor: isJoin ? "#FFFFFF" : "#8A7C8C",
+      createTabColor: !isJoin ? "#FFFFFF" : "#8A7C8C",
+      persistLabel: s.persistent ? "Persistent room" : "Ephemeral room",
+      persistDescription: s.persistent
+        ? "Stays open for good. Chat history is saved, so anyone with the code can drop back in anytime."
+        : "Closes when everyone leaves. Nothing is saved — perfect for a quick hang.",
+      persistTrackStyle: persistTrackStyle,
+      persistThumbStyle: persistThumbStyle,
+      submitLabel: isJoin ? "Join Room" : "Create Room",
+      submitBg: ready ? (isJoin ? "#2A2640" : "#38C9A8") : "#D8CFD4",
+      submitTextColor: ready ? "#FFFFFF" : "#8A7C8C",
+      setJoin: this.setJoin,
+      setCreate: this.setCreate,
+      updateName: this.updateName,
+      updateCode: this.updateCode,
+      togglePersist: this.togglePersist,
+      submit: this.submit,
+      openMyRooms: this.openMyRooms
+    };
+  }
+}
+</script>
+</body>
+</html>

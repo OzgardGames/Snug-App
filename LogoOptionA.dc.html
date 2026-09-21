@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+  </style>
+</helmet>
+
+<div style="position:relative;width:640px;height:480px;overflow:hidden;background:#FDEEF2;font-family:'Nunito',sans-serif;border-radius:18px;">
+  <div style="position:absolute;top:-140px;right:-120px;width:360px;height:360px;border-radius:50%;background:#FF6F91;opacity:0.16;filter:blur(60px);"></div>
+  <div style="position:absolute;bottom:-150px;left:-80px;width:340px;height:340px;border-radius:50%;background:#38C9A8;opacity:0.16;filter:blur(60px);"></div>
+
+  <div style="position:relative;z-index:1;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;">
+    <div style="width:104px;height:104px;border-radius:32px;background:#2A2640;display:flex;align-items:center;justify-content:center;box-shadow:0 14px 30px rgba(42,38,64,0.25);">
+      <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 20v-8.5A6 6 0 0 1 18 11.5V20"/>
+        <path d="M4 20h16"/>
+        <circle cx="12" cy="14.5" r="1.3" fill="#FFFFFF" stroke="none"/>
+      </svg>
+    </div>
+    <div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:68px;color:#2A2640;letter-spacing:-0.01em;line-height:1;">Nook</div>
+    <div style="font-size:13px;font-weight:700;color:#8A7C8C;">A — Corner Mark · a cozy alcove, warm &amp; grounded</div>
+  </div>
+</div>
+
+</x-dc>
+</body>
+</html>

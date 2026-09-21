@@ -1,0 +1,422 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&amp;family=Nunito:wght@400;600;700;800&amp;display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #2A2640; text-decoration: underline; }
+    a:hover { color: #000000; }
+    ::selection { background: #2A2640; color: #FFF6EC; }
+    .vsh-btn { transition: transform 0.08s ease, opacity 0.15s ease, background-color 0.15s ease, filter 0.15s ease; cursor: pointer; }
+    .vsh-btn:hover:not(:active) { filter: brightness(1.05); }
+    .vsh-btn:active { transform: scale(0.96); }
+    .vsh-chip { transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
+    .vsh-chip:hover { transform: translateY(-1px); }
+    .vsh-livedot { animation: vshLiveDot 1.4s infinite; }
+    @keyframes vshLiveDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    @keyframes vshPopIn {
+      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .vsh-popin { animation: vshPopIn 0.15s cubic-bezier(0.16,1,0.3,1); transform-origin: top; }
+    .vsh-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .vsh-scroll::-webkit-scrollbar-thumb { background: #F5D6C6; border-radius: 8px; }
+    .vsh-scroll::-webkit-scrollbar-track { background: transparent; }
+    @media (prefers-reduced-motion: reduce) {
+      .vsh-livedot { animation: none; opacity: 1; }
+      .vsh-popin { animation: none; }
+      .vsh-chip:hover { transform: none; }
+    }
+  </style>
+</helmet>
+
+<div style="position:relative;width:1280px;height:800px;overflow:hidden;background:#FDEEF2;font-family:'Nunito',sans-serif;color:#2A2640;border-radius:18px;">
+
+  <div style="position:relative;z-index:1;width:100%;height:100%;display:flex;flex-direction:column;">
+
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 26px 18px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="position:relative;width:38px;height:38px;flex-shrink:0;">
+          <div style="position:absolute;inset:0;border-radius:50%;border:3px solid #38C9A8;opacity:0.55;"></div>
+          <div style="position:absolute;top:5px;left:5px;right:5px;bottom:5px;border-radius:50%;border:3px solid #FDBA74;opacity:0.75;"></div>
+          <div style="position:absolute;top:11px;left:11px;right:11px;bottom:11px;border-radius:50%;background:#FF6F91;"></div>
+        </div>
+        <div style="font-family:'Poppins',sans-serif;font-weight:800;font-size:18px;">Friday Hangout</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;align-items:center;gap:6px;background:#FFFFFF;border-radius:999px;padding:5px 13px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#38C9A8;display:inline-block;"></span>
+          <span style="font-size:12px;font-weight:800;">7/10</span>
+        </div>
+        <div onClick="{{openSettings}}" class="vsh-btn" style="width:34px;height:34px;border-radius:11px;background:#FFFFFF;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#2A2640" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="15" cy="6" r="2.1" fill="#2A2640" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="9" cy="12" r="2.1" fill="#2A2640" stroke="none"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="17" cy="18" r="2.1" fill="#2A2640" stroke="none"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- body -->
+    <div style="flex:1;display:flex;min-height:0;gap:16px;padding:8px 26px 20px;">
+
+      <!-- stage column -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px;">
+
+        <!-- who's sharing picker -->
+        <sc-if value="{{showPicker}}" hint-placeholder-val="{{true}}">
+          <div class="vsh-scroll" style="flex-shrink:0;display:flex;align-items:center;gap:8px;overflow-x:auto;padding-bottom:2px;padding-top:3px;">
+            <span style="font-size:11px;font-weight:800;color:#8A7C8C;text-transform:uppercase;letter-spacing:0.4px;flex-shrink:0;margin-right:2px;">Sharing now</span>
+            <sc-for list="{{sharers}}" as="p" hint-placeholder-count="2">
+              <div onClick="{{p.pick}}" class="vsh-btn vsh-chip" style="flex-shrink:0;display:flex;align-items:center;gap:7px;padding:6px 12px 6px 6px;border-radius:999px;background:{{p.chipBg}};box-shadow:{{p.chipShadow}};">
+                <div style="position:relative;width:26px;height:26px;">
+                  <sc-if value="{{p.isOwner}}" hint-placeholder-val="{{false}}">
+                    <div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;background:#FFFFFF;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(42,38,64,0.2);z-index:2;">
+                      <svg viewBox="0 0 24 24" width="8" height="8" fill="#F0A93A" stroke="none"><path d="M3 18h18l-1.5-9-4.7 3.3L12 5l-2.8 7.3L4.5 9 3 18Z"/></svg>
+                    </div>
+                  </sc-if>
+                  <div style="width:100%;height:100%;border-radius:50%;background:{{p.color}};display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:11px;color:#2A2640;">{{p.initials}}</div>
+                </div>
+                <span style="font-size:12.5px;font-weight:700;">{{p.name}}</span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#2A2640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path></svg>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <!-- stage -->
+        <div style="flex:1;min-height:0;background:#FFFFFF;border-radius:24px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:12px 16px;border-bottom:1px solid #F3E6EC;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#E2D3D9;display:inline-block;"></span>
+            <span style="width:8px;height:8px;border-radius:50%;background:#E2D3D9;display:inline-block;"></span>
+            <span style="width:8px;height:8px;border-radius:50%;background:#E2D3D9;display:inline-block;"></span>
+            <span style="font-size:12.5px;font-weight:700;color:#8A7C8C;margin-left:6px;">{{spotlight.shareTitle}}</span>
+          </div>
+          <div style="flex:1;position:relative;background:{{spotlight.stageBg}};display:flex;align-items:center;justify-content:center;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+              <div style="width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,0.55);display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#2A2640" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path></svg>
+              </div>
+              <div style="font-size:13px;font-weight:700;color:#2A2640;">Live view of {{spotlight.name}}'s screen</div>
+            </div>
+            <div style="position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.85);border-radius:999px;padding:6px 12px 6px 6px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:{{spotlight.color}};display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:10px;color:#2A2640;">{{spotlight.initials}}</div>
+              <span class="vsh-livedot" style="width:6px;height:6px;border-radius:50%;background:#FF6F91;display:inline-block;"></span>
+              <span style="font-size:12px;font-weight:800;">{{spotlight.name}} is presenting</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- not-sharing participants strip -->
+        <div class="vsh-scroll" style="flex-shrink:0;display:flex;align-items:center;gap:10px;overflow-x:auto;padding:2px;">
+          <sc-for list="{{others}}" as="p" hint-placeholder-count="5">
+            <div style="flex-shrink:0;position:relative;display:flex;align-items:center;gap:7px;background:#FFFFFF;border-radius:999px;padding:5px 12px 5px 5px;">
+              <div style="position:relative;width:32px;height:32px;">
+                <sc-if value="{{p.isOwner}}" hint-placeholder-val="{{false}}">
+                  <div onClick="{{openManageRoom}}" class="vsh-btn" style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:#FFFFFF;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(42,38,64,0.18);z-index:2;">
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="#F0A93A" stroke="none"><path d="M3 18h18l-1.5-9-4.7 3.3L12 5l-2.8 7.3L4.5 9 3 18Z"></path></svg>
+                  </div>
+                </sc-if>
+                <div style="width:100%;height:100%;border-radius:50%;background:{{p.color}};display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:12px;color:#2A2640;">{{p.initials}}</div>
+                <div style="position:absolute;bottom:-2px;right:-2px;width:15px;height:15px;border-radius:50%;background:{{p.badgeBg}};border:2px solid #FFFFFF;display:flex;align-items:center;justify-content:center;">
+                  <sc-if value="{{p.muted}}" hint-placeholder-val="{{false}}">
+                    <svg viewBox="0 0 24 24" width="7" height="7" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v1"></path><path d="M19 11a7 7 0 0 1-1.34 4.12"></path><path d="M5 11a7 7 0 0 0 9.9 6.36"></path><path d="M12 18v3"></path><path d="M4 4l16 16"></path></svg>
+                  </sc-if>
+                  <sc-if value="{{p.notMuted}}" hint-placeholder-val="{{true}}">
+                    <svg viewBox="0 0 24 24" width="7" height="7" fill="none" stroke="#2A2640" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"></path><path d="M19 11a7 7 0 0 1-14 0"></path><path d="M12 18v3"></path></svg>
+                  </sc-if>
+                </div>
+              </div>
+              <span style="font-size:12.5px;font-weight:700;">{{p.name}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- mic control bar -->
+        <div style="flex-shrink:0;display:flex;justify-content:center;">
+          <div style="position:relative;display:flex;align-items:center;gap:16px;background:#FFFFFF;padding:10px 20px;border-radius:999px;box-shadow:0 8px 20px rgba(42,38,64,0.1);">
+
+            <div onClick="{{toggleMute}}" class="vsh-btn" style="width:46px;height:46px;border-radius:50%;background:{{muteBtnBg}};display:flex;align-items:center;justify-content:center;">
+              <sc-if value="{{muted}}" hint-placeholder-val="{{false}}">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v1"></path><path d="M19 11a7 7 0 0 1-1.34 4.12"></path><path d="M5 11a7 7 0 0 0 9.9 6.36"></path><path d="M12 18v3"></path><path d="M4 4l16 16"></path></svg>
+              </sc-if>
+              <sc-if value="{{micNotMuted}}" hint-placeholder-val="{{true}}">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"></path><path d="M19 11a7 7 0 0 1-14 0"></path><path d="M12 18v3"></path></svg>
+              </sc-if>
+            </div>
+
+            <div style="width:1px;height:28px;background:#F0E4EA;"></div>
+
+            <div style="position:relative;">
+              <div onClick="{{toggleDevice}}" class="vsh-btn" style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:14px;background:#FDEEF2;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2A2640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"></path><path d="M19 11a7 7 0 0 1-14 0"></path></svg>
+                <span style="font-size:12.5px;font-weight:800;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{selectedDevice}}</span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#2A2640" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+              </div>
+              <sc-if value="{{deviceOpen}}" hint-placeholder-val="{{false}}">
+                <div class="vsh-popin" style="position:absolute;bottom:56px;left:0;width:220px;background:#FFFFFF;border-radius:16px;box-shadow:0 12px 28px rgba(42,38,64,0.18);padding:6px;">
+                  <sc-for list="{{devices}}" as="d" hint-placeholder-count="3">
+                    <div onClick="{{d.pick}}" class="vsh-btn" style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:12px;background:{{d.rowBg}};">
+                      <span style="font-size:13px;font-weight:{{d.weight}};">{{d.name}}</span>
+                      <sc-if value="{{d.selected}}" hint-placeholder-val="{{false}}">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#38C9A8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="width:1px;height:28px;background:#F0E4EA;"></div>
+
+            <div onClick="{{togglePTT}}" class="vsh-btn" style="display:flex;align-items:center;gap:9px;padding:8px 6px;">
+              <span style="font-size:12.5px;font-weight:800;color:#2A2640;">Push to talk</span>
+              <div style="{{pttTrackStyle}}">
+                <div style="{{pttThumbStyle}}"></div>
+              </div>
+            </div>
+
+            <div style="width:1px;height:28px;background:#F0E4EA;"></div>
+
+            <div onClick="{{toggleMyShare}}" class="vsh-btn" style="display:flex;align-items:center;gap:8px;padding:10px 17px;border-radius:999px;background:{{shareBtnBg}};">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="{{shareIconColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path></svg>
+              <span style="font-size:12.5px;font-weight:800;color:{{shareLabelColor}};">{{shareLabel}}</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- chat column -->
+      <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;background:#FFFFFF;border-radius:24px;overflow:hidden;">
+
+        <div style="padding:16px 18px 10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:'Poppins',sans-serif;font-weight:800;font-size:15px;">Chat</span>
+            <div onClick="{{toggleSearch}}" class="vsh-btn" style="width:30px;height:30px;border-radius:10px;background:#FDEEF2;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#2A2640" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.35-4.35"></path></svg>
+            </div>
+          </div>
+          <sc-if value="{{searchOpen}}" hint-placeholder-val="{{false}}">
+            <input type="text" value="{{searchQuery}}" onChange="{{updateSearch}}" placeholder="Search messages..." class="vsh-popin" style="margin-top:9px;width:100%;font-family:'Nunito',sans-serif;font-size:12.5px;font-weight:600;padding:8px 11px;border-radius:11px;border:none;background:#FDEEF2;outline:none;color:#2A2640;">
+          </sc-if>
+        </div>
+
+        <div class="vsh-scroll" style="flex:1;overflow:auto;padding:4px 18px;display:flex;flex-direction:column;gap:11px;">
+          <sc-for list="{{filteredMessages}}" as="m" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;">
+              <div style="width:28px;height:28px;border-radius:50%;background:{{m.color}};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:11px;color:{{m.textColor}};">{{m.initials}}</div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:baseline;gap:6px;">
+                  <span style="font-size:12px;font-weight:800;">{{m.author}}</span>
+                  <span style="font-size:10px;color:#B0A3AC;font-weight:700;">{{m.time}}</span>
+                </div>
+                <sc-if value="{{m.isVideo}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:5px;position:relative;width:200px;max-width:100%;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#2A2640,#4A4266);">
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                      <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="#2A2640" stroke="none" style="margin-left:2px;"><path d="M8 5v14l11-7z"></path></svg>
+                      </div>
+                    </div>
+                    <div style="position:absolute;bottom:6px;right:6px;background:rgba(20,15,25,0.65);color:#FFFFFF;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;">{{m.duration}}</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{m.isImage}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:5px;width:200px;max-width:100%;aspect-ratio:4/3;border-radius:14px;background:{{m.imageBg}};"></div>
+                </sc-if>
+                <sc-if value="{{m.isLink}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:5px;display:flex;align-items:center;gap:9px;background:#FFFFFF;border:1.5px solid #F0E4EA;border-radius:13px;padding:7px;width:220px;max-width:100%;">
+                    <div style="position:relative;width:56px;height:42px;border-radius:8px;overflow:hidden;flex-shrink:0;background:{{m.imageBg}};">
+                      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                        <div style="width:17px;height:17px;border-radius:50%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;">
+                          <svg viewBox="0 0 24 24" width="8" height="8" fill="#2A2640" stroke="none" style="margin-left:1px;"><path d="M8 5v14l11-7z"></path></svg>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="min-width:0;">
+                      <div style="font-size:11.5px;font-weight:800;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{m.linkTitle}}</div>
+                      <div style="font-size:10px;color:#8A7C8C;font-weight:700;margin-top:2px;">{{m.linkDomain}}</div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{m.isText}}" hint-placeholder-val="{{true}}">
+                  <div style="font-size:12.5px;font-weight:600;line-height:1.4;margin-top:2px;">{{m.text}}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:0 18px 18px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:7px;background:#FDEEF2;border-radius:15px;padding:7px 7px 7px 13px;margin-top:8px;">
+            <input type="text" placeholder="Message the room..." style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#2A2640;">
+            <div class="vsh-btn" style="width:32px;height:32px;border-radius:10px;background:#2A2640;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      muted: false,
+      pushToTalk: false,
+      deviceOpen: false,
+      selectedDevice: "MacBook Pro Microphone",
+      searchOpen: false,
+      searchQuery: "",
+      spotlightId: "jad",
+      myShareOn: true
+    };
+    this._devices = ["MacBook Pro Microphone", "AirPods Pro", "Blue Yeti USB Mic"];
+    this._participants = [
+      { id: "jad", name: "Jad", color: "#FF6F91", isOwner: true, sharing: true, shareTitle: "Catan Universe — Game", stageBg: "linear-gradient(135deg,#FFB4C6,#FF6F91)", mutedBase: false },
+      { id: "maya", name: "Maya", color: "#38C9A8", isOwner: false, sharing: false, mutedBase: false },
+      { id: "leo", name: "Leo", color: "#FFC145", isOwner: false, sharing: false, mutedBase: true },
+      { id: "sam", name: "Sam", color: "#B69CE8", isOwner: false, sharing: true, shareTitle: "Summer Trip Photos", stageBg: "linear-gradient(135deg,#D6C9F2,#B69CE8)", mutedBase: false },
+      { id: "ari", name: "Ari", color: "#6FB8E8", isOwner: false, sharing: false, mutedBase: false },
+      { id: "noor", name: "Noor", color: "#FFA36C", isOwner: false, sharing: false, mutedBase: true },
+      { id: "kai", name: "Kai", color: "#FF8FAE", isOwner: false, sharing: false, mutedBase: false }
+    ];
+    this._messages = [
+      { id: 1, author: "Maya", color: "#38C9A8", textColor: "#2A2640", time: "2:14 PM", text: "did you see that last round, that was so close", isText: true, isVideo: false, isImage: false, isLink: false },
+      { id: 2, author: "Leo", color: "#FFC145", textColor: "#2A2640", time: "2:15 PM", text: "I was today years old when I learned that combo", isText: true, isVideo: false, isImage: false, isLink: false },
+      { id: 3, author: "Jad", color: "#FF6F91", textColor: "#2A2640", time: "2:16 PM", isText: false, isVideo: true, isImage: false, isLink: false, fileName: "round-12-clip.mp4", duration: "0:42" },
+      { id: 4, author: "Sam", color: "#B69CE8", textColor: "#2A2640", time: "2:18 PM", isText: false, isVideo: false, isImage: true, isLink: false, imageBg: "linear-gradient(135deg,#B69CE8,#6FB8E8)" },
+      { id: 5, author: "Ari", color: "#6FB8E8", textColor: "#2A2640", time: "2:20 PM", isText: false, isVideo: false, isImage: false, isLink: true, imageBg: "linear-gradient(135deg,#FF6F91,#FFC145)", linkTitle: "How to 3-star every level — full guide", linkDomain: "youtube.com" }
+    ];
+    this.toggleMute = this.toggleMute.bind(this);
+    this.togglePTT = this.togglePTT.bind(this);
+    this.toggleDevice = this.toggleDevice.bind(this);
+    this.toggleSearch = this.toggleSearch.bind(this);
+    this.toggleMyShare = this.toggleMyShare.bind(this);
+    this.updateSearch = this.updateSearch.bind(this);
+    this.openSettings = this.openSettings.bind(this);
+    this.openManageRoom = this.openManageRoom.bind(this);
+  }
+  toggleMute() { this.setState({ muted: !this.state.muted }); }
+  togglePTT() { this.setState({ pushToTalk: !this.state.pushToTalk }); }
+  toggleDevice() { this.setState({ deviceOpen: !this.state.deviceOpen }); }
+  toggleSearch() { this.setState({ searchOpen: !this.state.searchOpen, searchQuery: "" }); }
+  toggleMyShare() { this.setState({ myShareOn: !this.state.myShareOn }); }
+  updateSearch(e) { this.setState({ searchQuery: e.target.value }); }
+  openSettings() {}
+  openManageRoom() {}
+  renderVals() {
+    const s = this.state;
+    const initials = (n) => n.slice(0, 1).toUpperCase();
+
+    const sharersRaw = this._participants.filter((p) => p.sharing);
+    const sharers = sharersRaw.map((p) => {
+      const selected = p.id === s.spotlightId;
+      return {
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        initials: initials(p.name),
+        isOwner: p.isOwner,
+        chipBg: selected ? "#EAFAF5" : "#FFFFFF",
+        chipShadow: selected ? "0 0 0 2px #38C9A8" : "0 1px 3px rgba(42,38,64,0.08)",
+        pick: () => this.setState({ spotlightId: p.id })
+      };
+    });
+
+    const spotlightRaw = sharersRaw.find((p) => p.id === s.spotlightId) || sharersRaw[0];
+    const spotlight = {
+      id: spotlightRaw.id,
+      name: spotlightRaw.name,
+      color: spotlightRaw.color,
+      initials: initials(spotlightRaw.name),
+      shareTitle: spotlightRaw.shareTitle,
+      stageBg: spotlightRaw.stageBg
+    };
+
+    const others = this._participants
+      .filter((p) => !p.sharing)
+      .map((p) => {
+        const muted = p.mutedBase;
+        const badgeBg = muted ? "#2A2640" : "#FFFFFF";
+        return {
+          id: p.id,
+          name: p.name,
+          color: p.color,
+          initials: initials(p.name),
+          isOwner: p.isOwner,
+          muted: muted,
+          notMuted: !muted,
+          badgeBg: badgeBg
+        };
+      });
+
+    const devices = this._devices.map((d) => ({
+      name: d,
+      selected: d === s.selectedDevice,
+      weight: d === s.selectedDevice ? "800" : "500",
+      rowBg: d === s.selectedDevice ? "#FDEEF2" : "transparent",
+      pick: () => this.setState({ selectedDevice: d, deviceOpen: false })
+    }));
+
+    const q = s.searchQuery.trim().toLowerCase();
+    const filteredMessages = this._messages
+      .filter((m) => {
+        if (!q) return true;
+        const haystack = (m.author + " " + (m.text || "") + " " + (m.fileName || "") + " " + (m.linkTitle || "")).toLowerCase();
+        return haystack.indexOf(q) !== -1;
+      })
+      .map((m) => ({ ...m, initials: initials(m.author) }));
+
+    const pttOn = s.pushToTalk;
+    const pttTrackStyle = "width:36px;height:21px;border-radius:999px;position:relative;background:" + (pttOn ? "#2A2640" : "#F0E4EA") + ";transition:background 0.15s ease;";
+    const pttThumbStyle = "position:absolute;top:2px;left:" + (pttOn ? "17px" : "2px") + ";width:17px;height:17px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left 0.15s ease;";
+
+    return {
+      showPicker: sharers.length > 0,
+      sharers: sharers,
+      spotlight: spotlight,
+      others: others,
+      muted: s.muted,
+      micNotMuted: !s.muted,
+      muteBtnBg: s.muted ? "#FF6F91" : "#2A2640",
+      deviceOpen: s.deviceOpen,
+      selectedDevice: s.selectedDevice,
+      devices: devices,
+      pttTrackStyle: pttTrackStyle,
+      pttThumbStyle: pttThumbStyle,
+      shareBtnBg: s.myShareOn ? "#FF6F91" : "#38C9A8",
+      shareIconColor: "#FFFFFF",
+      shareLabelColor: "#FFFFFF",
+      shareLabel: s.myShareOn ? "Stop Sharing" : "Share Screen",
+      searchOpen: s.searchOpen,
+      searchQuery: s.searchQuery,
+      filteredMessages: filteredMessages,
+      toggleMute: this.toggleMute,
+      togglePTT: this.togglePTT,
+      toggleDevice: this.toggleDevice,
+      toggleSearch: this.toggleSearch,
+      toggleMyShare: this.toggleMyShare,
+      updateSearch: this.updateSearch,
+      openSettings: this.openSettings,
+      openManageRoom: this.openManageRoom
+    };
+  }
+}
+</script>
+</body>
+</html>

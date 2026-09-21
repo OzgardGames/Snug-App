@@ -1,0 +1,385 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #2A2640; text-decoration: underline; }
+    a:hover { color: #000000; }
+    .vcd-card { transition: transform 0.15s ease; }
+    .vcd-btn { transition: transform 0.08s ease, opacity 0.15s ease; cursor: pointer; }
+    .vcd-btn:active { transform: scale(0.95); }
+    @keyframes vcdRingPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.9); }
+      50% { box-shadow: 0 0 0 6px rgba(255,255,255,0); }
+    }
+    @keyframes vcdWave {
+      0%, 100% { transform: scaleY(0.4); }
+      50% { transform: scaleY(1); }
+    }
+    .vcd-wavebar { width: 3px; border-radius: 2px; background: #2A2640; display: inline-block; animation: vcdWave 0.85s ease-in-out infinite; }
+    .vcd-wavebar:nth-child(1) { height: 8px; animation-delay: 0s; }
+    .vcd-wavebar:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+    .vcd-wavebar:nth-child(3) { height: 10px; animation-delay: 0.3s; }
+    .vcd-scroll::-webkit-scrollbar { width: 8px; }
+    .vcd-scroll::-webkit-scrollbar-thumb { background: #F5D6C6; border-radius: 8px; }
+    .vcd-scroll::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</helmet>
+
+<div style="position:relative;width:1280px;height:800px;overflow:hidden;background:#FDEEF2;font-family:'Nunito',sans-serif;color:#2A2640;border-radius:18px;">
+
+  <div style="position:relative;z-index:1;width:100%;height:100%;display:flex;flex-direction:column;">
+
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 16px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:44px;height:44px;border-radius:16px;background:#2A2640;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15V9a1 1 0 0 1 1-1h3l4-3v14l-4-3H5a1 1 0 0 1-1-1Z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M18.5 6.5a7 7 0 0 1 0 11"/></svg>
+        </div>
+        <div>
+          <div style="font-family:'Poppins',sans-serif;font-weight:800;font-size:22px;line-height:1.1;">Friday Hangout</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <div onClick="{{copyCode}}" class="vcd-btn" style="display:flex;align-items:center;gap:6px;background:#2A2640;border-radius:999px;padding:5px 12px 5px 14px;">
+              <span style="font-family:'Poppins',sans-serif;font-weight:700;font-size:12px;letter-spacing:0.5px;color:#FFFFFF;">PLAY-42</span>
+              <sc-if value="{{copied}}" hint-placeholder-val="{{false}}">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#B8F542" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              </sc-if>
+              <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              </sc-if>
+            </div>
+            <span style="font-size:12px;font-weight:700;color:#8A7C8C;">tap to copy &amp; invite friends</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;align-items:center;padding:5px 14px 5px 5px;background:#FFFFFF;border-radius:999px;">
+          <div style="display:flex;">
+            <div style="width:26px;height:26px;border-radius:50%;background:#FF6F91;border:2px solid #FFFFFF;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#FFFFFF;margin-left:-6px;">J</div>
+            <div style="width:26px;height:26px;border-radius:50%;background:#38C9A8;border:2px solid #FFFFFF;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#FFFFFF;margin-left:-6px;">M</div>
+            <div style="width:26px;height:26px;border-radius:50%;background:#FFC145;border:2px solid #FFFFFF;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#2A2640;margin-left:-6px;">L</div>
+          </div>
+          <span style="font-size:12.5px;font-weight:800;margin-left:8px;">+4 · 7/10</span>
+        </div>
+        <div class="vcd-btn" style="width:40px;height:40px;border-radius:14px;background:#FFFFFF;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#2A2640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="15" cy="6" r="2.2" fill="#2A2640" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="9" cy="12" r="2.2" fill="#2A2640" stroke="none"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="17" cy="18" r="2.2" fill="#2A2640" stroke="none"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- body -->
+    <div style="flex:1;display:flex;min-height:0;">
+
+      <!-- main voice column -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+
+        <div class="vcd-scroll" style="flex:1;padding:12px 26px;display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:18px;align-content:start;overflow:auto;">
+
+          <sc-for list="{{participants}}" as="p" hint-placeholder-count="7">
+            <div class="vcd-card" style="display:flex;flex-direction:column;align-items:center;gap:10px;background:{{p.cardBg}};border-radius:26px;padding:20px 10px 16px;">
+              <div style="position:relative;width:76px;height:76px;">
+                <div style="{{p.ringStyle}}">
+                  <div style="width:100%;height:100%;border-radius:50%;background:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:24px;color:{{p.textColor}};">{{p.initials}}</div>
+                </div>
+                <div style="position:absolute;bottom:-3px;right:-3px;width:25px;height:25px;border-radius:50%;background:{{p.badgeBg}};border:2.5px solid {{p.cardBg}};display:flex;align-items:center;justify-content:center;">
+                  <sc-if value="{{p.muted}}" hint-placeholder-val="{{false}}">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="{{p.badgeIconColor}}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v1"/><path d="M19 11a7 7 0 0 1-1.34 4.12"/><path d="M5 11a7 7 0 0 0 9.9 6.36"/><path d="M12 18v3"/><path d="M4 4l16 16"/></svg>
+                  </sc-if>
+                  <sc-if value="{{p.notMuted}}" hint-placeholder-val="{{true}}">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="{{p.badgeIconColor}}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
+                  </sc-if>
+                </div>
+              </div>
+              <div style="font-family:'Poppins',sans-serif;font-size:14px;font-weight:700;text-align:center;color:{{p.textColor}};">{{p.name}}</div>
+              <sc-if value="{{p.isYou}}" hint-placeholder-val="{{false}}">
+                <div style="font-family:'Poppins',sans-serif;font-size:10px;font-weight:800;color:{{p.cardBg}};background:{{p.textColor}};border-radius:999px;padding:2px 9px;letter-spacing:0.3px;">YOU</div>
+              </sc-if>
+              <sc-if value="{{p.talking}}" hint-placeholder-val="{{false}}">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:14px;">
+                  <span class="vcd-wavebar" style="background:{{p.textColor}};"></span><span class="vcd-wavebar" style="background:{{p.textColor}};"></span><span class="vcd-wavebar" style="background:{{p.textColor}};"></span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+
+        </div>
+
+        <!-- mic control bar -->
+        <div style="padding:12px 26px 24px;display:flex;justify-content:center;flex-shrink:0;">
+          <div style="position:relative;display:flex;align-items:center;gap:16px;background:#FFFFFF;padding:10px 20px;border-radius:999px;box-shadow:0 8px 20px rgba(42,38,64,0.1);">
+
+            <!-- mute -->
+            <div onClick="{{toggleMute}}" class="vcd-btn" style="width:48px;height:48px;border-radius:50%;background:{{muteBtnBg}};display:flex;align-items:center;justify-content:center;">
+              <sc-if value="{{muted}}" hint-placeholder-val="{{false}}">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v1"/><path d="M19 11a7 7 0 0 1-1.34 4.12"/><path d="M5 11a7 7 0 0 0 9.9 6.36"/><path d="M12 18v3"/><path d="M4 4l16 16"/></svg>
+              </sc-if>
+              <sc-if value="{{micNotMuted}}" hint-placeholder-val="{{true}}">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
+              </sc-if>
+            </div>
+
+            <div style="width:1px;height:30px;background:#F0E4EA;"></div>
+
+            <!-- device selector -->
+            <div onClick="{{toggleDevice}}" class="vcd-btn" style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:14px;background:#FDEEF2;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#2A2640" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/></svg>
+              <span style="font-size:13px;font-weight:800;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{selectedDevice}}</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#2A2640" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+
+            <sc-if value="{{deviceOpen}}" hint-placeholder-val="{{false}}">
+              <div style="position:absolute;bottom:64px;left:96px;width:220px;background:#FFFFFF;border-radius:18px;box-shadow:0 12px 28px rgba(42,38,64,0.18);padding:6px;">
+                <sc-for list="{{devices}}" as="d" hint-placeholder-count="3">
+                  <div onClick="{{d.pick}}" class="vcd-btn" style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:12px;background:{{d.rowBg}};">
+                    <span style="font-size:13px;font-weight:{{d.weight}};">{{d.name}}</span>
+                    <sc-if value="{{d.selected}}" hint-placeholder-val="{{false}}">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#38C9A8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="width:1px;height:30px;background:#F0E4EA;"></div>
+
+            <!-- push to talk -->
+            <div onClick="{{togglePTT}}" class="vcd-btn" style="display:flex;align-items:center;gap:9px;padding:9px 6px;">
+              <span style="font-size:13px;font-weight:800;color:#2A2640;">Push to talk</span>
+              <div style="{{pttTrackStyle}}">
+                <div style="{{pttThumbStyle}}"></div>
+              </div>
+            </div>
+
+            <div style="width:1px;height:30px;background:#F0E4EA;"></div>
+
+            <!-- screen share -->
+            <div onClick="{{toggleShare}}" class="vcd-btn" style="display:flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;background:{{shareBtnBg}};">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="{{shareIconColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+              <sc-if value="{{sharing}}" hint-placeholder-val="{{false}}">
+                <span style="width:7px;height:7px;border-radius:50%;background:#B8F542;display:inline-block;"></span>
+                <span style="font-size:13px;font-weight:800;color:#FFFFFF;">Sharing</span>
+              </sc-if>
+              <sc-if value="{{notSharing}}" hint-placeholder-val="{{true}}">
+                <span style="font-size:13px;font-weight:800;color:#FFFFFF;">Share Screen</span>
+              </sc-if>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- side panel -->
+      <div style="width:336px;flex-shrink:0;display:flex;flex-direction:column;background:#FFFFFF;margin:0 20px 20px 0;border-radius:28px;overflow:hidden;">
+
+        <div style="padding:20px 20px 12px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:'Poppins',sans-serif;font-weight:800;font-size:18px;">Chat</span>
+            <div onClick="{{toggleSearch}}" class="vcd-btn" style="width:32px;height:32px;border-radius:11px;background:#FDEEF2;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2A2640" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+            </div>
+          </div>
+          <sc-if value="{{searchOpen}}" hint-placeholder-val="{{false}}">
+            <input type="text" value="{{searchQuery}}" onChange="{{updateSearch}}" placeholder="Search messages..." style="margin-top:10px;width:100%;font-family:'Nunito',sans-serif;font-size:13px;font-weight:600;padding:9px 12px;border-radius:12px;border:none;background:#FDEEF2;outline:none;color:#2A2640;"/>
+          </sc-if>
+        </div>
+
+        <div class="vcd-scroll" style="flex:1;overflow:auto;padding:4px 20px;display:flex;flex-direction:column;gap:12px;">
+          <sc-for list="{{filteredMessages}}" as="m" hint-placeholder-count="4">
+            <div style="display:flex;gap:10px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:{{m.color}};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:800;font-size:12px;color:{{m.textColor}};">{{m.initials}}</div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:baseline;gap:7px;">
+                  <span style="font-size:12.5px;font-weight:800;">{{m.author}}</span>
+                  <span style="font-size:10.5px;color:#B0A3AC;font-weight:700;">{{m.time}}</span>
+                </div>
+                <sc-if value="{{m.isFile}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:5px;display:flex;align-items:center;gap:9px;background:#FFC145;border-radius:16px;padding:9px 12px;">
+                    <div style="width:30px;height:30px;border-radius:10px;background:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2A2640" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                    </div>
+                    <div style="min-width:0;">
+                      <div style="font-size:12.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2A2640;">{{m.fileName}}</div>
+                      <div style="font-size:10.5px;color:#5C5266;font-weight:700;">{{m.fileSize}}</div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{m.isText}}" hint-placeholder-val="{{true}}">
+                  <div style="font-size:13px;font-weight:600;line-height:1.4;margin-top:2px;">{{m.text}}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:8px 20px;flex-shrink:0;">
+          <div style="{{dropZoneStyle}}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="{{dropIconColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+            <span style="font-size:12px;font-weight:800;color:{{dropTextColor}};">{{dropLabel}}</span>
+            <span style="font-size:10.5px;color:#B0A3AC;font-weight:700;">images, videos &amp; files</span>
+          </div>
+        </div>
+
+        <div style="padding:0 20px 20px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:8px;background:#FDEEF2;border-radius:16px;padding:8px 8px 8px 14px;">
+            <input type="text" placeholder="Message the room..." style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:#2A2640;"/>
+            <div class="vcd-btn" style="width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#8A7C8C" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L10.13 17.1a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </div>
+            <div class="vcd-btn" style="width:34px;height:34px;border-radius:11px;background:#2A2640;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"showDropOverlay":{"editor":"boolean","default":false,"section":"Preview"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      muted: false,
+      pushToTalk: false,
+      deviceOpen: false,
+      selectedDevice: "MacBook Pro Microphone",
+      searchOpen: false,
+      searchQuery: "",
+      sharing: false,
+      copied: false
+    };
+    this._devices = ["MacBook Pro Microphone", "AirPods Pro", "Blue Yeti USB Mic"];
+    this._participants = [
+      { id: "jad", name: "Jad", cardBg: "#FF6F91", color: "#FF6F91", textColor: "#2A2640", isYou: true, talkingBase: false, mutedBase: false },
+      { id: "maya", name: "Maya", cardBg: "#38C9A8", color: "#38C9A8", textColor: "#2A2640", isYou: false, talkingBase: true, mutedBase: false },
+      { id: "leo", name: "Leo", cardBg: "#FFC145", color: "#FFC145", textColor: "#2A2640", isYou: false, talkingBase: false, mutedBase: true },
+      { id: "sam", name: "Sam", cardBg: "#B69CE8", color: "#B69CE8", textColor: "#2A2640", isYou: false, talkingBase: false, mutedBase: false },
+      { id: "ari", name: "Ari", cardBg: "#6FB8E8", color: "#6FB8E8", textColor: "#2A2640", isYou: false, talkingBase: false, mutedBase: false },
+      { id: "noor", name: "Noor", cardBg: "#FFA36C", color: "#FFA36C", textColor: "#2A2640", isYou: false, talkingBase: false, mutedBase: true },
+      { id: "kai", name: "Kai", cardBg: "#FF8FAE", color: "#FF8FAE", textColor: "#2A2640", isYou: false, talkingBase: false, mutedBase: false }
+    ];
+    this._messages = [
+      { id: 1, author: "Maya", color: "#38C9A8", textColor: "#2A2640", time: "2:14 PM", text: "did you see that last round, that was so close", isText: true, isFile: false },
+      { id: 2, author: "Leo", color: "#FFC145", textColor: "#2A2640", time: "2:15 PM", text: "I was today years old when I learned that combo", isText: true, isFile: false },
+      { id: 3, author: "Jad", color: "#FF6F91", textColor: "#2A2640", time: "2:16 PM", isFile: true, isText: false, fileName: "round-12-clip.mp4", fileSize: "14.2 MB" },
+      { id: 4, author: "Sam", color: "#B69CE8", textColor: "#2A2640", time: "2:18 PM", text: "sending the map layout now", isText: true, isFile: false }
+    ];
+    this.toggleMute = this.toggleMute.bind(this);
+    this.togglePTT = this.togglePTT.bind(this);
+    this.toggleDevice = this.toggleDevice.bind(this);
+    this.toggleSearch = this.toggleSearch.bind(this);
+    this.toggleShare = this.toggleShare.bind(this);
+    this.copyCode = this.copyCode.bind(this);
+    this.updateSearch = this.updateSearch.bind(this);
+  }
+  toggleMute() { this.setState({ muted: !this.state.muted }); }
+  togglePTT() { this.setState({ pushToTalk: !this.state.pushToTalk }); }
+  toggleDevice() { this.setState({ deviceOpen: !this.state.deviceOpen }); }
+  toggleSearch() { this.setState({ searchOpen: !this.state.searchOpen, searchQuery: "" }); }
+  toggleShare() { this.setState({ sharing: !this.state.sharing }); }
+  updateSearch(e) { this.setState({ searchQuery: e.target.value }); }
+  copyCode() {
+    this.setState({ copied: true });
+    setTimeout(() => { this.setState({ copied: false }); }, 1600);
+  }
+  renderVals() {
+    const s = this.state;
+    const initials = (n) => n.slice(0, 1).toUpperCase();
+
+    const participants = this._participants.map((p) => {
+      const muted = p.isYou ? s.muted : p.mutedBase;
+      const talking = p.talkingBase && !muted;
+      let ringStyle = "width:100%;height:100%;border-radius:50%;";
+      if (talking) {
+        ringStyle += "padding:4px;animation:vcdRingPulse 1.4s infinite;border-radius:50%;";
+      } else {
+        ringStyle += "padding:4px;";
+      }
+      const badgeBg = muted ? "#2A2640" : (talking ? "#2A2640" : "#FFFFFF");
+      const badgeIconColor = (muted || talking) ? "#FFFFFF" : "#2A2640";
+      return {
+        id: p.id,
+        name: p.name,
+        cardBg: p.cardBg,
+        textColor: p.textColor,
+        initials: initials(p.name),
+        isYou: p.isYou,
+        muted: muted,
+        notMuted: !muted,
+        talking: talking,
+        ringStyle: ringStyle,
+        badgeBg: badgeBg,
+        badgeIconColor: badgeIconColor
+      };
+    });
+
+    const devices = this._devices.map((d) => ({
+      name: d,
+      selected: d === s.selectedDevice,
+      weight: d === s.selectedDevice ? "800" : "500",
+      rowBg: d === s.selectedDevice ? "#FDEEF2" : "transparent",
+      pick: () => this.setState({ selectedDevice: d, deviceOpen: false })
+    }));
+
+    const q = s.searchQuery.trim().toLowerCase();
+    const filteredMessages = this._messages
+      .filter((m) => {
+        if (!q) return true;
+        const haystack = (m.author + " " + (m.text || "") + " " + (m.fileName || "")).toLowerCase();
+        return haystack.indexOf(q) !== -1;
+      })
+      .map((m) => ({ ...m, initials: initials(m.author) }));
+
+    const pttOn = s.pushToTalk;
+    const pttTrackStyle = "width:38px;height:22px;border-radius:999px;position:relative;background:" + (pttOn ? "#2A2640" : "#F0E4EA") + ";transition:background 0.15s ease;";
+    const pttThumbStyle = "position:absolute;top:2px;left:" + (pttOn ? "18px" : "2px") + ";width:18px;height:18px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left 0.15s ease;";
+
+    return {
+      muted: s.muted,
+      micNotMuted: !s.muted,
+      muteBtnBg: s.muted ? "#FF6F91" : "#2A2640",
+      copied: s.copied,
+      notCopied: !s.copied,
+      participants: participants,
+      deviceOpen: s.deviceOpen,
+      selectedDevice: s.selectedDevice,
+      devices: devices,
+      pttTrackStyle: pttTrackStyle,
+      pttThumbStyle: pttThumbStyle,
+      sharing: s.sharing,
+      notSharing: !s.sharing,
+      shareBtnBg: s.sharing ? "#FF6F91" : "#38C9A8",
+      shareIconColor: "#FFFFFF",
+      searchOpen: s.searchOpen,
+      searchQuery: s.searchQuery,
+      filteredMessages: filteredMessages,
+      dropZoneStyle: "display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;border:2px dashed " + (this.props.showDropOverlay ? "#38C9A8" : "#F0E4EA") + ";border-radius:16px;padding:14px 10px;background:" + (this.props.showDropOverlay ? "#EAFAF5" : "#FDEEF2") + ";transition:all 0.15s ease;",
+      dropIconColor: this.props.showDropOverlay ? "#1E8F73" : "#B0A3AC",
+      dropTextColor: this.props.showDropOverlay ? "#1E8F73" : "#8A7C8C",
+      dropLabel: this.props.showDropOverlay ? "Drop to upload" : "Drag & drop here",
+      toggleMute: this.toggleMute,
+      togglePTT: this.togglePTT,
+      toggleDevice: this.toggleDevice,
+      toggleSearch: this.toggleSearch,
+      toggleShare: this.toggleShare,
+      copyCode: this.copyCode,
+      updateSearch: this.updateSearch
+    };
+  }
+}
+</script>
+</body>
+</html>

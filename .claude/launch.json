@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "http-server", "-p", "8123", "-c-1"],
+      "port": 8123
+    },
+    {
+      "name": "snug-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "snug", "run", "dev:all"],
+      "port": 3000
+    }
+  ]
+}

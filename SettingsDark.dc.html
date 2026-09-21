@@ -1,0 +1,273 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #C4F542; text-decoration: none; }
+    a:hover { color: #A8D82E; }
+    ::selection { background: #2A2640; color: #FFF6EC; }
+    .theme-dark ::selection { background: #C4F542; color: #17161F; }
+    .vsd-btn { transition: transform 0.08s ease, opacity 0.15s ease, background-color 0.3s cubic-bezier(0.16,1,0.3,1), color 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s cubic-bezier(0.16,1,0.3,1), filter 0.15s ease; cursor: pointer; }
+    .vsd-btn:hover:not(:active) { filter: brightness(1.12); }
+    .vsd-btn:active { transform: scale(0.96); }
+    .vsd-fade { transition: background-color 0.3s cubic-bezier(0.16,1,0.3,1), color 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .vsd-fade svg { transition: stroke 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .vsd-pill { transition: transform 0.28s cubic-bezier(0.16,1,0.3,1), background-color 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .vsd-scroll::-webkit-scrollbar { width: 8px; }
+    .vsd-scroll::-webkit-scrollbar-thumb { background: #33313E; border-radius: 8px; }
+    .theme-dark .vsd-scroll::-webkit-scrollbar-thumb { background: #33313E; }
+    .vsd-scroll::-webkit-scrollbar-track { background: transparent; }
+    @keyframes vsdPopIn {
+      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .vsd-popin { animation: vsdPopIn 0.15s cubic-bezier(0.16,1,0.3,1); transform-origin: top; }
+    @media (prefers-reduced-motion: reduce) {
+      .vsd-popin { animation: none; }
+      .vsd-pill { transition: background-color 0.3s cubic-bezier(0.16,1,0.3,1); }
+    }
+  </style>
+</helmet>
+
+<div class="{{rootClass}}" style="position:relative;width:1280px;height:800px;overflow:hidden;background:{{pageBg}};font-family:'Nunito',sans-serif;color:{{text}};border-radius:18px;">
+
+  <div class="vsd-fade" style="position:relative;z-index:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;">
+    <div class="vsd-fade" style="width:520px;max-height:680px;background:{{panelBg}};box-shadow:{{panelShadow}};border-radius:28px;display:flex;flex-direction:column;overflow:hidden;">
+
+      <div style="padding:22px 26px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+        <span class="vsd-fade" style="font-family:'Sora',sans-serif;font-weight:800;font-size:18px;color:{{text}};">Settings</span>
+        <div class="vsd-btn vsd-fade" style="width:32px;height:32px;border-radius:11px;background:{{surfaceTint}};display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="{{text}}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+        </div>
+      </div>
+
+      <div class="vsd-scroll" style="flex:1;overflow:auto;padding:4px 26px 8px;display:flex;flex-direction:column;gap:22px;">
+
+        <!-- audio -->
+        <div>
+          <div class="vsd-fade" style="font-size:11px;font-weight:800;color:{{muted}};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Audio</div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="position:relative;">
+              <div onClick="{{toggleInput}}" class="vsd-btn vsd-fade" style="display:flex;align-items:center;justify-content:space-between;background:{{surfaceTint}};border-radius:14px;padding:12px 14px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="{{text}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/></svg>
+                  <div>
+                    <div class="vsd-fade" style="font-size:10.5px;font-weight:800;color:{{muted}};">Microphone</div>
+                    <div class="vsd-fade" style="font-size:13.5px;font-weight:700;color:{{text}};">{{inputDevice}}</div>
+                  </div>
+                </div>
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="{{muted}}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <sc-if value="{{inputOpen}}" hint-placeholder-val="{{false}}">
+                <div class="vsd-popin vsd-fade" style="position:absolute;top:64px;left:0;right:0;background:{{popinBg}};box-shadow:{{popinShadow}};border-radius:14px;padding:6px;z-index:5;">
+                  <sc-for list="{{inputDevices}}" as="d" hint-placeholder-count="3">
+                    <div onClick="{{d.pick}}" class="vsd-btn" style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:11px;background:{{d.rowBg}};">
+                      <span style="font-size:13px;font-weight:{{d.weight}};color:{{text}};">{{d.name}}</span>
+                      <sc-if value="{{d.selected}}" hint-placeholder-val="{{false}}">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="{{accent}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="position:relative;">
+              <div onClick="{{toggleOutput}}" class="vsd-btn vsd-fade" style="display:flex;align-items:center;justify-content:space-between;background:{{surfaceTint}};border-radius:14px;padding:12px 14px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="{{text}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+                  <div>
+                    <div class="vsd-fade" style="font-size:10.5px;font-weight:800;color:{{muted}};">Speaker</div>
+                    <div class="vsd-fade" style="font-size:13.5px;font-weight:700;color:{{text}};">{{outputDevice}}</div>
+                  </div>
+                </div>
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="{{muted}}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <sc-if value="{{outputOpen}}" hint-placeholder-val="{{false}}">
+                <div class="vsd-popin vsd-fade" style="position:absolute;top:64px;left:0;right:0;background:{{popinBg}};box-shadow:{{popinShadow}};border-radius:14px;padding:6px;z-index:5;">
+                  <sc-for list="{{outputDevices}}" as="d" hint-placeholder-count="2">
+                    <div onClick="{{d.pick}}" class="vsd-btn" style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:11px;background:{{d.rowBg}};">
+                      <span style="font-size:13px;font-weight:{{d.weight}};color:{{text}};">{{d.name}}</span>
+                      <sc-if value="{{d.selected}}" hint-placeholder-val="{{false}}">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="{{accent}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <div class="vsd-fade" style="display:flex;align-items:center;justify-content:space-between;background:{{surfaceTint}};border-radius:14px;padding:12px 14px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="{{text}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <div>
+                  <div class="vsd-fade" style="font-size:13.5px;font-weight:700;color:{{text}};">Push to talk</div>
+                  <div class="vsd-fade" style="font-size:11px;color:{{muted}};font-weight:700;">Hold Space to talk while muted</div>
+                </div>
+              </div>
+              <div onClick="{{togglePTT}}" class="vsd-btn" style="{{pttTrackStyle}}">
+                <div style="{{pttThumbStyle}}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- appearance -->
+        <div>
+          <div class="vsd-fade" style="font-size:11px;font-weight:800;color:{{muted}};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Appearance</div>
+          <div class="vsd-fade" style="position:relative;display:flex;background:{{surfaceTint}};border-radius:14px;padding:4px;">
+            <div class="vsd-pill" style="position:absolute;top:4px;left:4px;width:calc(50% - 4px);height:calc(100% - 8px);border-radius:11px;background:{{pillBg}};transform:translateX({{pillOffset}});pointer-events:none;"></div>
+            <div onClick="{{setLight}}" class="vsd-btn" style="position:relative;z-index:1;flex:1;text-align:center;padding:9px 0;border-radius:11px;font-weight:700;font-size:13px;color:{{lightLabelColor}};">Light</div>
+            <div onClick="{{setDark}}" class="vsd-btn" style="position:relative;z-index:1;flex:1;text-align:center;padding:9px 0;border-radius:11px;font-weight:700;font-size:13px;color:{{darkLabelColor}};">Dark</div>
+          </div>
+        </div>
+
+        <!-- notifications -->
+        <div>
+          <div class="vsd-fade" style="font-size:11px;font-weight:800;color:{{muted}};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Notifications</div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <sc-for list="{{notifications}}" as="n" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 4px;">
+                <span class="vsd-fade" style="font-size:13.5px;font-weight:700;color:{{text}};">{{n.label}}</span>
+                <div onClick="{{n.toggle}}" class="vsd-btn" style="{{n.trackStyle}}">
+                  <div style="{{n.thumbStyle}}"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="padding:16px 26px 22px;flex-shrink:0;">
+        <div class="vsd-btn vsd-fade" style="text-align:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:{{doneText}};background:{{doneBg}};border-radius:14px;padding:13px 0;">Done</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      dark: true,
+      inputOpen: false,
+      outputOpen: false,
+      inputDevice: "MacBook Pro Microphone",
+      outputDevice: "MacBook Pro Speakers",
+      pushToTalk: false,
+      notif: { join: true, share: true, message: true }
+    };
+    this._inputDevices = ["MacBook Pro Microphone", "AirPods Pro", "Blue Yeti USB Mic"];
+    this._outputDevices = ["MacBook Pro Speakers", "AirPods Pro"];
+    this.toggleInput = this.toggleInput.bind(this);
+    this.toggleOutput = this.toggleOutput.bind(this);
+    this.togglePTT = this.togglePTT.bind(this);
+    this.setLight = this.setLight.bind(this);
+    this.setDark = this.setDark.bind(this);
+  }
+  toggleInput() { this.setState({ inputOpen: !this.state.inputOpen, outputOpen: false }); }
+  toggleOutput() { this.setState({ outputOpen: !this.state.outputOpen, inputOpen: false }); }
+  togglePTT() { this.setState({ pushToTalk: !this.state.pushToTalk }); }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  toggleNotif(key) {
+    const notif = { ...this.state.notif, [key]: !this.state.notif[key] };
+    this.setState({ notif: notif });
+  }
+  renderVals() {
+    const s = this.state;
+    const dark = s.dark;
+
+    const pageBg = dark ? "#17161F" : "#FDEEF2";
+    const panelBg = dark ? "#1E1C28" : "#FFFFFF";
+    const panelShadow = dark ? "0 20px 50px rgba(0,0,0,0.4)" : "0 20px 50px rgba(42,38,64,0.12)";
+    const surfaceTint = dark ? "#25232F" : "#FDEEF2";
+    const popinBg = dark ? "#25232F" : "#FFFFFF";
+    const popinShadow = dark ? "0 12px 28px rgba(0,0,0,0.4)" : "0 12px 28px rgba(42,38,64,0.18)";
+    const text = dark ? "#F2F0F5" : "#2A2640";
+    const muted = dark ? "#8A8794" : "#8A7C8C";
+    const accent = dark ? "#C4F542" : "#38C9A8";
+    const doneBg = dark ? "#C4F542" : "#2A2640";
+    const doneText = dark ? "#17161F" : "#FFFFFF";
+    const selectedRowBg = dark ? "#17161F" : "#FDEEF2";
+
+    const inputDevices = this._inputDevices.map((d) => ({
+      name: d,
+      selected: d === s.inputDevice,
+      weight: d === s.inputDevice ? "800" : "500",
+      rowBg: d === s.inputDevice ? selectedRowBg : "transparent",
+      pick: () => this.setState({ inputDevice: d, inputOpen: false })
+    }));
+    const outputDevices = this._outputDevices.map((d) => ({
+      name: d,
+      selected: d === s.outputDevice,
+      weight: d === s.outputDevice ? "800" : "500",
+      rowBg: d === s.outputDevice ? selectedRowBg : "transparent",
+      pick: () => this.setState({ outputDevice: d, outputOpen: false })
+    }));
+
+    const track = (on) => "width:40px;height:23px;border-radius:999px;position:relative;background:" + (on ? accent : (dark ? "#33313E" : "#E7D8CF")) + ";transition:background 0.3s cubic-bezier(0.16,1,0.3,1);";
+    const thumb = (on) => "position:absolute;top:2px;left:" + (on ? "19px" : "2px") + ";width:19px;height:19px;border-radius:50%;background:" + (dark ? (on ? "#17161F" : "#F2F0F5") : "#FFFFFF") + ";box-shadow:0 1px 3px rgba(0,0,0,0.22), 0 0 0 1px rgba(42,38,64,0.14);transition:left 0.15s ease, background 0.3s cubic-bezier(0.16,1,0.3,1);";
+
+    const notifDefs = [
+      { key: "join", label: "Someone joins the room" },
+      { key: "share", label: "Someone starts sharing their screen" },
+      { key: "message", label: "New chat message" }
+    ];
+    const notifications = notifDefs.map((n) => ({
+      label: n.label,
+      trackStyle: track(s.notif[n.key]),
+      thumbStyle: thumb(s.notif[n.key]),
+      toggle: () => this.toggleNotif(n.key)
+    }));
+
+    return {
+      rootClass: dark ? "theme-dark" : "",
+      pageBg: pageBg,
+      panelBg: panelBg,
+      panelShadow: panelShadow,
+      surfaceTint: surfaceTint,
+      popinBg: popinBg,
+      popinShadow: popinShadow,
+      text: text,
+      muted: muted,
+      accent: accent,
+      doneBg: doneBg,
+      doneText: doneText,
+      pillBg: doneBg,
+      pillOffset: dark ? "100%" : "0",
+      lightLabelColor: !dark ? doneText : muted,
+      darkLabelColor: dark ? doneText : muted,
+      setLight: this.setLight,
+      setDark: this.setDark,
+      inputOpen: s.inputOpen,
+      outputOpen: s.outputOpen,
+      inputDevice: s.inputDevice,
+      outputDevice: s.outputDevice,
+      inputDevices: inputDevices,
+      outputDevices: outputDevices,
+      pttTrackStyle: track(s.pushToTalk),
+      pttThumbStyle: thumb(s.pushToTalk),
+      notifications: notifications,
+      toggleInput: this.toggleInput,
+      toggleOutput: this.toggleOutput,
+      togglePTT: this.togglePTT
+    };
+  }
+}
+</script>
+</body>
+</html>

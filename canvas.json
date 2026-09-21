@@ -1,0 +1,35 @@
+{
+  "artboards": [
+    { "file": "Home.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-home" },
+    { "file": "HomeDark.dc.html", "x": 1380, "y": 0, "w": 1280, "h": 800, "page": "page-home" },
+    { "file": "MyRooms.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-myrooms" },
+    { "file": "MyRoomsDark.dc.html", "x": 1380, "y": 0, "w": 1280, "h": 800, "page": "page-myrooms" },
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-main" },
+    { "file": "MainDark.dc.html", "x": 1380, "y": 0, "w": 1280, "h": 800, "page": "page-main" },
+    { "file": "ScreenShare.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-share" },
+    { "file": "Settings.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-settings" },
+    { "file": "SettingsDark.dc.html", "x": 1380, "y": 0, "w": 1280, "h": 800, "page": "page-settings" },
+    { "file": "ManageRoom.dc.html", "x": 0, "y": 0, "w": 1280, "h": 800, "page": "page-manage" },
+    { "file": "ManageRoomDark.dc.html", "x": 1380, "y": 0, "w": 1280, "h": 800, "page": "page-manage" },
+    { "file": "SnugLogoF.dc.html", "x": 0, "y": 0, "w": 640, "h": 480, "page": "page-logo" }
+  ],
+  "annotations": [
+    { "id": "note-home", "x": 0, "y": -100, "w": 340, "text": "Entry screen — join with a code, or create one and toggle Ephemeral vs Persistent. Light + dark.", "page": "page-home" },
+    { "id": "note-myrooms", "x": 0, "y": -100, "w": 340, "text": "My Rooms — persistent rooms saved from before, so anyone with the code can find their way back. Light + dark.", "page": "page-myrooms" },
+    { "id": "note-main", "x": 0, "y": -100, "w": 340, "text": "Main room — the owner wears a crown, chat shows images/video inline plus link preview cards. Light + dark share the same official user colors.", "page": "page-main" },
+    { "id": "note-share", "x": 0, "y": -100, "w": 340, "text": "Screen share, two people sharing at once — click a chip in \"Sharing now\" to switch which screen is spotlighted.", "page": "page-share" },
+    { "id": "note-settings", "x": 0, "y": -100, "w": 340, "text": "Settings — audio devices, push-to-talk, appearance, notifications. Light + dark.", "page": "page-settings" },
+    { "id": "note-manage", "x": 0, "y": -100, "w": 340, "text": "Manage Room — owner-only: rename, regenerate the code, flip ephemeral/persistent, remove members, end or delete the room. Light + dark.", "page": "page-manage" },
+    { "id": "note-logo", "x": 0, "y": -100, "w": 400, "text": "Snug's mark — nested rings, now used as the brand badge across Home, Main Room and Screen Share.", "page": "page-logo" }
+  ],
+  "launch": { "view": "canvas", "page": "page-main" },
+  "pages": [
+    { "id": "page-home", "name": "Home" },
+    { "id": "page-myrooms", "name": "My Rooms" },
+    { "id": "page-main", "name": "Main Room" },
+    { "id": "page-share", "name": "Screen Share" },
+    { "id": "page-settings", "name": "Settings" },
+    { "id": "page-manage", "name": "Manage Room" },
+    { "id": "page-logo", "name": "Brand" }
+  ]
+}
