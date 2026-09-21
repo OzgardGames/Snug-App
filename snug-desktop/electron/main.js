@@ -1367,10 +1367,26 @@ let shareSources = new Map();
 // below (pick, cancel, closed-without-picking, a second share request
 // arriving) goes through this instead of touching pendingShareCallback
 // directly, so it can never be double-resolved.
+//
+// Cancelling means calling the callback with NO arguments. Verified against
+// Electron 44: callback({}) throws "Video was requested, but no video stream
+// was provided" and callback({ video: null }) throws "video must be a
+// WebFrameMain or DesktopCapturerSource", both as uncaught exceptions in the
+// main process — which Electron puts on screen as a modal "A JavaScript error
+// occurred in the main process" dialog, mid-call. callback() returns cleanly
+// and still rejects the renderer's getDisplayMedia() (with AbortError), so
+// nothing is left hanging.
 function resolvePendingShare(result) {
   const cb = pendingShareCallback;
   pendingShareCallback = null;
-  cb?.(result);
+  if (!cb) return;
+  try {
+    cb(result);
+  } catch (err) {
+    // Belt and braces for the above: whatever goes wrong in here, it must
+    // not reach the top of the main process and become that dialog.
+    console.error("[snug-desktop] display-media callback failed", err);
+  }
 }
 
 async function openSharePicker(callback) {
@@ -1382,7 +1398,7 @@ async function openSharePicker(callback) {
   // first: the thrown error left pendingShareCallback pointing at a
   // callback that could now never resolve, wedging every later click.
   if (sharePickerWindow && !sharePickerWindow.isDestroyed()) {
-    resolvePendingShare({});
+    resolvePendingShare();
     pendingShareCallback = callback;
     sharePickerWindow.focus();
     return;
@@ -1399,7 +1415,7 @@ async function openSharePicker(callback) {
     });
   } catch (err) {
     console.error("[snug-desktop] failed to enumerate share sources", err);
-    resolvePendingShare({});
+    resolvePendingShare();
     return;
   }
   shareSources = new Map(sources.map((s) => [s.id, s]));
@@ -1430,7 +1446,7 @@ async function openSharePicker(callback) {
     // of hanging forever waiting on a callback that'll never come. A no-op
     // if pick/cancel already resolved it — resolvePendingShare only ever
     // fires whatever's still actually pending.
-    resolvePendingShare({});
+    resolvePendingShare();
   });
   sharePickerWindow = win;
 }
@@ -1455,12 +1471,12 @@ ipcMain.handle("share-picker:get-sources", () =>
 
 ipcMain.on("share-picker:pick", (_event, sourceId) => {
   const source = shareSources.get(sourceId);
-  resolvePendingShare(source ? { video: source } : {});
+  resolvePendingShare(source ? { video: source } : undefined);
   closeSharePickerWindow();
 });
 
 ipcMain.on("share-picker:cancel", () => {
-  resolvePendingShare({});
+  resolvePendingShare();
   closeSharePickerWindow();
 });
 

@@ -22,6 +22,7 @@ import {
   isNoiseSuppressionSupported,
   type NoiseSuppressionHandle,
 } from "@/lib/noiseSuppression";
+import { getDesktopBridge } from "@/lib/desktopBridge";
 
 type UseVoiceRoomArgs = {
   active: boolean;
@@ -39,6 +40,20 @@ function displayMediaConstraints(surface?: DisplaySurface): DisplayMediaStreamOp
   return surface
     ? { video: { displaySurface: surface }, audio: false }
     : { video: true, audio: false };
+}
+
+// Closing the picker without choosing anything is a dismissal, not a failure,
+// and must not raise the red banner. A browser's native picker signals that
+// with NotAllowedError. The desktop app's own picker can't: cancelling means
+// calling Electron's display-media callback with no arguments (see
+// resolvePendingShare in snug-desktop/electron/main.js), and Electron turns
+// that into AbortError "Invalid capture constraints". AbortError is only
+// treated as a dismissal there, because in a real browser it means something
+// genuinely went wrong and the user deserves to be told.
+function isPickerDismissal(err: unknown): boolean {
+  const name = (err as DOMException)?.name;
+  if (name === "NotAllowedError") return true;
+  return name === "AbortError" && !!getDesktopBridge()?.isDesktop;
 }
 
 export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: UseVoiceRoomArgs) {
@@ -682,11 +697,10 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
           displayMediaConstraints(surface),
         );
         const track = stream.getVideoTracks()[0];
-        // The desktop app's own picker (see share-picker.html) resolves
-        // this promise with a track-less stream on cancel instead of
-        // rejecting it like a browser's native picker does — treat that
-        // exactly like the NotAllowedError case below rather than letting
-        // `track.onended = ...` throw on undefined.
+        // Nothing should resolve without a video track, but if anything
+        // ever does, bail rather than letting `track.onended = ...` throw
+        // on undefined. Cancelling the desktop picker rejects (handled
+        // below); this is the belt-and-braces path.
         if (!track) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -700,11 +714,7 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
         setSharing(true);
         getSocket().emit("set-sharing", { sharing: true });
       } catch (err) {
-        // The user cancelling the picker rejects with NotAllowedError too —
-        // that's a normal dismissal, not something to show as an error.
-        if ((err as DOMException)?.name !== "NotAllowedError") {
-          setScreenError("Couldn't start screen sharing.");
-        }
+        if (!isPickerDismissal(err)) setScreenError("Couldn't start screen sharing.");
       }
     },
     [stopSharing],
@@ -720,9 +730,9 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
         displayMediaConstraints(surface),
       );
       const newTrack = newStream.getVideoTracks()[0];
-      // Same track-less-resolve-on-cancel case as startSharing above —
-      // leave the CURRENT share running untouched rather than tearing it
-      // down for a replacement that never actually arrived.
+      // Same belt-and-braces case as startSharing above — leave the CURRENT
+      // share running untouched rather than tearing it down for a
+      // replacement that never actually arrived.
       if (!newTrack) {
         newStream.getTracks().forEach((t) => t.stop());
         return;
@@ -736,9 +746,7 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
       screenStreamRef.current = newStream;
       setLocalScreenStream(newStream);
     } catch (err) {
-      if ((err as DOMException)?.name !== "NotAllowedError") {
-        setScreenError("Couldn't switch your shared screen.");
-      }
+      if (!isPickerDismissal(err)) setScreenError("Couldn't switch your shared screen.");
     }
   }, [stopSharing]);
 
