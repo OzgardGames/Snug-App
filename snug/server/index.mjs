@@ -74,21 +74,19 @@ async function fetchIceServers() {
   }
 }
 
+// Room codes are said out loud and typed by hand, so they stay short and
+// friendly — but the space they're drawn from has to be big enough that
+// nobody can simply walk it. The original 14 words x 2 digits was 1,260
+// codes: a script could have tried every one in well under a minute and
+// dropped in on whichever rooms happened to be open. These 40 words x 4
+// digits give 360,000, and joinThrottle below is what actually makes
+// guessing impractical.
 const WORDS = [
-  "PLAY",
-  "COZY",
-  "GLOW",
-  "HAZE",
-  "DRIFT",
-  "ECHO",
-  "SPARK",
-  "MELLOW",
-  "BREEZE",
-  "GLIDE",
-  "EMBER",
-  "CORAL",
-  "DUSK",
-  "LUME",
+  "PLAY", "COZY", "GLOW", "HAZE", "DRIFT", "ECHO", "SPARK", "MELLOW",
+  "BREEZE", "GLIDE", "EMBER", "CORAL", "DUSK", "LUME", "FROST", "PEBBLE",
+  "MAPLE", "RIVER", "CEDAR", "AMBER", "OTTER", "MOSSY", "LANTERN", "HOLLOW",
+  "MEADOW", "PIXEL", "COMET", "VELVET", "SUNNY", "QUARTZ", "BRAMBLE", "NIMBUS",
+  "THICKET", "RIPPLE", "BURROW", "CLOVER", "BEACON", "MARBLE", "WILLOW", "SAFFRON",
 ];
 
 const MAX_HISTORY = 500;
@@ -120,13 +118,43 @@ for (const saved of loadPersistentRooms()) {
 }
 
 function generateCode() {
-  let code;
-  do {
+  // Bounded, unlike the do/while this replaces: that looped until it found
+  // a free code, which with a small space meant that once enough rooms
+  // were open it would spin forever and take the server with it.
+  for (let i = 0; i < 200; i += 1) {
     const word = WORDS[Math.floor(Math.random() * WORDS.length)];
-    const num = Math.floor(10 + Math.random() * 90);
-    code = `${word}-${num}`;
-  } while (rooms.has(code));
-  return code;
+    const num = Math.floor(1000 + Math.random() * 9000);
+    const code = `${word}-${num}`;
+    if (!rooms.has(code)) return code;
+  }
+  // Absurdly unlikely — 200 misses means the space is genuinely crowded.
+  // A longer code is worse to read out but better than not starting.
+  return `${WORDS[Math.floor(Math.random() * WORDS.length)]}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+}
+
+// Guessing a code is the only way into a room you weren't given the code
+// for, so the thing that matters is how fast someone can try. Each
+// connection gets a budget of failed joins; successful ones don't count,
+// so nobody legitimately typing a code wrong a few times is affected.
+const JOIN_FAIL_LIMIT = 10;
+const JOIN_FAIL_WINDOW_MS = 60_000;
+const joinFailures = new Map(); // socket.id -> { count, resetAt }
+
+function tooManyFailedJoins(socketId) {
+  const now = Date.now();
+  const entry = joinFailures.get(socketId);
+  if (!entry || now > entry.resetAt) return false;
+  return entry.count >= JOIN_FAIL_LIMIT;
+}
+
+function noteFailedJoin(socketId) {
+  const now = Date.now();
+  const entry = joinFailures.get(socketId);
+  if (!entry || now > entry.resetAt) {
+    joinFailures.set(socketId, { count: 1, resetAt: now + JOIN_FAIL_WINDOW_MS });
+    return;
+  }
+  entry.count += 1;
 }
 
 function roomMembers(room) {
@@ -293,8 +321,15 @@ io.on("connection", (socket) => {
     const normalizedCode = (code ?? "").trim().toUpperCase();
     if (!trimmed) return ack?.({ error: "Name is required." });
 
+    if (tooManyFailedJoins(socket.id)) {
+      return ack?.({ error: "Too many attempts. Wait a minute and try again." });
+    }
+
     const room = rooms.get(normalizedCode);
-    if (!room) return ack?.({ error: "No room found with that code." });
+    if (!room) {
+      noteFailedJoin(socket.id);
+      return ack?.({ error: "No room found with that code." });
+    }
 
     if (!room.members.has(socket.id) && room.members.size >= MAX_MEMBERS) {
       return ack?.({ error: "This room is full." });
@@ -307,6 +342,11 @@ io.on("connection", (socket) => {
     if (room.passcodeHash && !isOwnerToken && !alreadyAuthorized) {
       const attempt = (passcode ?? "").trim();
       if (!verifyPasscode(attempt, room.passcodeHash, room.passcodeSalt)) {
+        // Counts against the same budget as a wrong code: otherwise
+        // knowing a room's code buys unlimited guesses at its passcode.
+        // An empty attempt is the client asking whether a passcode is
+        // needed before it shows the prompt, so it isn't held against you.
+        if (attempt) noteFailedJoin(socket.id);
         return ack?.({ error: "This room requires a passcode.", needsPasscode: true });
       }
       if (token) {
@@ -580,7 +620,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("leave-room", () => leaveCurrentRoom(socket));
-  socket.on("disconnect", () => leaveCurrentRoom(socket));
+  socket.on("disconnect", () => {
+    leaveCurrentRoom(socket);
+    joinFailures.delete(socket.id);
+  });
 
   function leaveCurrentRoom(socket) {
     const code = socket.data.roomCode;

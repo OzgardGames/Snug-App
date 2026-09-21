@@ -7,6 +7,7 @@ import { Toggle } from "@/components/Toggle";
 import { SettingsModal } from "@/components/SettingsModal";
 import { MyRoomsPanel } from "@/components/MyRoomsPanel";
 import { UpdateReadyPill } from "@/components/UpdateReadyPill";
+import { DownloadDesktopButton } from "@/components/DownloadDesktopButton";
 import { getSocket, type SocketAck } from "@/lib/socket";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
@@ -178,7 +179,11 @@ function HomeForm() {
 
   return (
     <main
-      className={`relative flex flex-1 justify-center overflow-hidden px-6 pb-6 ${isDesktop ? "items-start pt-2" : "items-center pt-6"}`}
+      className={`relative flex flex-1 justify-center px-6 pb-6 ${
+        isDesktop
+          ? "items-start overflow-hidden pt-2"
+          : "flex-col items-center overflow-y-auto pt-6"
+      }`}
     >
       {!isDesktop && (
         <>
@@ -187,6 +192,7 @@ function HomeForm() {
         </>
       )}
 
+      <div className="my-auto flex w-full max-w-[440px] flex-shrink-0 flex-col items-center">
       <div
         ref={cardRef}
         // In a browser the window is whatever size it is, so the card caps
@@ -196,9 +202,7 @@ function HomeForm() {
         // (useDesktopContentSize above), so capping here would be circular:
         // the card would report its own clamped height back and the window
         // could never grow past whatever it already was.
-        className={`relative z-10 flex w-full max-w-[440px] flex-col rounded-[32px] bg-snug-surface p-9 pb-8 motion-reduce:animate-none ${
-          isDesktop ? "overflow-hidden" : "max-h-full overflow-y-auto"
-        } ${
+        className={`relative z-10 flex w-full max-w-[440px] flex-col overflow-hidden rounded-[32px] bg-snug-surface p-9 pb-8 motion-reduce:animate-none ${
           navigating
             ? "pointer-events-none animate-[cardPopOut_180ms_ease-in_forwards]"
             : "animate-[cardPopIn_320ms_cubic-bezier(0.34,1.56,0.64,1)]"
@@ -509,6 +513,8 @@ function HomeForm() {
         </div>
         </div>
       )}
+      </div>
+      {!isDesktop && view === "main" && <DownloadDesktopButton />}
       </div>
     </main>
   );
