@@ -6,6 +6,7 @@ import { SnugMark } from "@/components/SnugMark";
 import { Toggle } from "@/components/Toggle";
 import { SettingsModal } from "@/components/SettingsModal";
 import { MyRoomsPanel } from "@/components/MyRoomsPanel";
+import { UpdateReadyPill } from "@/components/UpdateReadyPill";
 import { getSocket, type SocketAck } from "@/lib/socket";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
@@ -261,6 +262,7 @@ function HomeForm() {
           className="mb-5 flex items-center justify-between"
           style={isDesktop ? noDragRegion : undefined}
         >
+          <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setView("settings")}
@@ -286,6 +288,8 @@ function HomeForm() {
               <circle cx="17" cy="18" r="2.1" fill="currentColor" stroke="none" />
             </svg>
           </button>
+          {isDesktop && <UpdateReadyPill />}
+          </div>
 
           <button
             type="button"

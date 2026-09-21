@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SnugMark } from "@/components/SnugMark";
 import { SharePickerModal } from "@/components/SharePickerModal";
 import { SettingsModal } from "@/components/SettingsModal";
+import { UpdateReadyPill } from "@/components/UpdateReadyPill";
 import { ToastStack, type ToastItem, type ToastKind } from "@/components/Toast";
 import { useTheme } from "@/lib/theme";
 import { colorForId, initialFor } from "@/lib/participantColor";
@@ -946,6 +947,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
               </svg>
             </button>
           )}
+          {isDesktop && <UpdateReadyPill inRoom />}
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
