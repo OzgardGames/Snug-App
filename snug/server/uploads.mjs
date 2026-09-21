@@ -537,6 +537,15 @@ export function createUploadsRequestHandler(allowedOrigins, isRoomMember) {
       handleServeUpload(req, res, url);
       return;
     }
+    // Nothing answers "/" otherwise: Socket.IO only claims its own path, so
+    // the request hangs until Railway's edge gives up with a 502 five
+    // minutes later, holding a connection the whole time. Anyone opening
+    // the server URL in a browser does this, and so does any uptime check.
+    if (req.method === "GET" && (url === "/" || url === "/health")) {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+      return;
+    }
     // Not one of ours — leave it for Socket.IO's own request listener.
   };
 }

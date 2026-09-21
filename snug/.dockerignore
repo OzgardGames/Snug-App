@@ -1,0 +1,17 @@
+# Dockerfile.signal does `COPY server ./server`, which otherwise sweeps up
+# whatever local development left in there — 41MB of test uploads and a dev
+# SQLite file at the time this was written. None of it is read in production
+# (DATA_DIR points at the Railway volume), it just bloats the image and ships
+# local files to a public server.
+node_modules
+.next
+.git
+.env*
+server/uploads
+server/*.db
+server/*.db-journal
+server/*.db-wal
+server/*.test.mjs
+src
+public
+release
