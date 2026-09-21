@@ -143,6 +143,19 @@ body.desktop-window-transparent {
   }
 }
 
+/* The room's "REC" dot while instant replay is capturing — a slow blink,
+   the universal shorthand, rather than anything that competes with the
+   talking indicators next to it. */
+@keyframes recPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
 @keyframes talkRingPulse {
   0%,
   100% {

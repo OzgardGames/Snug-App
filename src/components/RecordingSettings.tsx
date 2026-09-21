@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Toggle } from "@/components/Toggle";
 import { getDesktopBridge } from "@/lib/desktopBridge";
+import { formatFileSize } from "@/lib/formatFileSize";
 import type {
   RecordingResolution,
   RecordingSettings as RecordingSettingsValue,
@@ -11,12 +12,6 @@ import type {
 
 const BUFFER_OPTIONS = [10, 20, 30] as const;
 const FPS_OPTIONS = [30, 60] as const;
-function formatBytes(bytes: number) {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-}
-
 // "No limit" leads because it's the default: these are clips someone chose
 // to keep, so trimming them is opt-in, not something that happens quietly.
 const STORAGE_OPTIONS: { value: number; label: string }[] = [
@@ -137,9 +132,14 @@ export function RecordingSettings() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
-              <span className="text-[13.5px] font-bold text-snug-text">Resolution</span>
-              <div className="flex flex-wrap justify-end gap-1.5">
+            <div className="rounded-2xl bg-snug-chip px-3.5 py-3">
+              <div className="text-[13.5px] font-bold text-snug-text">Resolution</div>
+              <div className="mt-0.5 text-[11px] font-bold text-snug-muted">
+                {settings.resolution === "auto"
+                  ? "Matches your screen — a 4K display records in 4K."
+                  : "Recorded at this size whatever your screen is."}
+              </div>
+              <div className="mt-2.5 flex gap-1.5">
                 {RESOLUTION_OPTIONS.map(({ value, label }) => {
                   const active = settings.resolution === value;
                   return (
@@ -148,7 +148,7 @@ export function RecordingSettings() {
                       type="button"
                       disabled={saving}
                       onClick={() => update({ resolution: value })}
-                      className="rounded-xl px-3 py-1.5 text-[12.5px] font-extrabold transition active:scale-95 disabled:opacity-60"
+                      className="flex-1 rounded-xl px-1.5 py-1.5 text-[12px] font-extrabold transition active:scale-95 disabled:opacity-60"
                       style={{
                         background: active ? "var(--snug-primary)" : "var(--snug-bg)",
                         color: active ? "var(--snug-primary-text)" : "var(--snug-text)",
@@ -199,17 +199,29 @@ export function RecordingSettings() {
               />
             </div>
 
-            <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
-              <div className="min-w-0 pr-3">
-                <div className="text-[13.5px] font-bold text-snug-text">Keep at most</div>
-                <div className="text-[11px] font-bold text-snug-muted">
-                  {usage ? `${formatBytes(usage.bytes)} in ${usage.count} clip${usage.count === 1 ? "" : "s"}` : "Saved clips"}
-                  {settings.maxStorageGb > 0
-                    ? " — over the limit, the oldest go to the Recycle Bin"
-                    : " — nothing is removed automatically"}
-                </div>
+            <div className="rounded-2xl bg-snug-chip px-3.5 py-3">
+              <div className="text-[13.5px] font-bold text-snug-text">Storage limit</div>
+              <div className="mt-0.5 text-[11px] font-bold text-snug-muted">
+                {settings.maxStorageGb > 0
+                  ? `Once saved clips pass ${settings.maxStorageGb} GB, the oldest are moved to the Recycle Bin to make room.`
+                  : "Saved clips are kept until you delete them yourself."}
               </div>
-              <div className="flex flex-shrink-0 flex-wrap justify-end gap-1.5">
+
+              <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-snug-bg px-3 py-2">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-snug-muted">
+                  <ellipse cx="12" cy="6" rx="8" ry="3" />
+                  <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+                  <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+                </svg>
+                <span className="text-[11.5px] font-bold text-snug-muted">
+                  {usage
+                    ? `Using ${formatFileSize(usage.bytes)} across ${usage.count} clip${usage.count === 1 ? "" : "s"}`
+                    : "Checking folder…"}
+                  {settings.maxStorageGb > 0 ? ` of ${settings.maxStorageGb} GB` : ""}
+                </span>
+              </div>
+
+              <div className="mt-2.5 flex gap-1.5">
                 {STORAGE_OPTIONS.map(({ value, label }) => {
                   const active = settings.maxStorageGb === value;
                   return (
@@ -218,7 +230,7 @@ export function RecordingSettings() {
                       type="button"
                       disabled={saving}
                       onClick={() => update({ maxStorageGb: value })}
-                      className="rounded-xl px-3 py-1.5 text-[12.5px] font-extrabold transition active:scale-95 disabled:opacity-60"
+                      className="flex-1 rounded-xl px-2 py-1.5 text-[12px] font-extrabold transition active:scale-95 disabled:opacity-60"
                       style={{
                         background: active ? "var(--snug-primary)" : "var(--snug-bg)",
                         color: active ? "var(--snug-primary-text)" : "var(--snug-text)",

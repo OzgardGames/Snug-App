@@ -27,7 +27,9 @@ export type RecordingSettings = {
   maxStorageGb: number;
 };
 export type RecordingUsage = { count: number; bytes: number; capGb: number };
-export type RecordingSaveResult = { ok: true; path: string } | { ok: false; error: string };
+export type RecordingSaveResult =
+  | { ok: true; path: string; bytes: number; seconds: number }
+  | { ok: false; error: string };
 
 export type SnugDesktopBridge = {
   isDesktop: true;

@@ -17,6 +17,7 @@ import { useNotificationPrefs, fireNotification, type NotificationPrefs } from "
 import { playSound } from "@/lib/sounds";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
+import { formatFileSize } from "@/lib/formatFileSize";
 import { dragRegion, noDragRegion } from "@/lib/desktopDrag";
 import { WindowControlsPill } from "@/components/WindowControlsPill";
 import { ResizeHandles } from "@/components/ResizeHandles";
@@ -32,6 +33,15 @@ import {
 } from "@/lib/socket";
 
 type Status = "loading" | "joined" | "error" | "needs-passcode";
+
+type ChatFilter = "all" | "images" | "videos" | "links";
+
+const CHAT_FILTERS: { key: ChatFilter; label: string }[] = [
+  { key: "all", label: "All messages" },
+  { key: "images", label: "Images" },
+  { key: "videos", label: "Videos" },
+  { key: "links", label: "Links" },
+];
 
 function applySinkId(el: HTMLAudioElement, deviceId: string | undefined) {
   const withSink = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
@@ -86,7 +96,34 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   }, [deviceOpen]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [chatFilter, setChatFilter] = useState<"all" | "images" | "videos" | "links">("all");
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+  // Mirrors the desktop app's instant-replay setting so the room can show
+  // that capture is live. Updated both on mount and whenever anything else
+  // changes it (Settings, or the tray's own "turn off").
+  const [recordingActive, setRecordingActive] = useState(false);
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    bridge.getRecordingSettings().then((r) => setRecordingActive(r.enabled)).catch(() => {});
+    return bridge.onRecordingSettingsChanged((r) => setRecordingActive(r.enabled));
+  }, []);
+  const chatFilterRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!chatFilterRef.current?.contains(e.target as Node)) setFilterOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setFilterOpen(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [filterOpen]);
   const [copied, setCopied] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [pickedSpotlightId, setPickedSpotlightId] = useState<string | null>(null);
@@ -277,7 +314,15 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     return bridge.onRecordingSaved((result) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const item = result.ok
-        ? { id, kind: "recording" as const, title: "Instant replay saved", body: result.path }
+        ? {
+            id,
+            kind: "recording" as const,
+            // What was saved, in the terms someone deciding whether to
+            // share it cares about — length and size, not a long path.
+            title: `Replay saved — ${result.seconds}s, ${formatFileSize(result.bytes)}`,
+            body: "Click to open the recordings folder",
+            onClick: () => void getDesktopBridge()?.openRecordingsFolder(),
+          }
         : { id, kind: "recording" as const, title: "Couldn't save the replay", body: result.error };
       setToasts((prev) => [...prev, item]);
       scheduleTimeout(() => {
@@ -857,6 +902,28 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           className="flex flex-shrink-0 items-center justify-end gap-1.5 md:w-[390px] md:gap-2"
           style={isDesktop ? noDragRegion : undefined}
         >
+          {/* Instant replay otherwise runs with no window and nothing on
+              screen — this is the only in-app sign that your screen is
+              being captured. Clicking it saves the clip, which is also the
+              thing you most likely want when you notice it. */}
+          {recordingActive && (
+            <button
+              type="button"
+              onClick={() => getDesktopBridge()?.saveReplayNow()}
+              aria-label="Instant replay is recording — save a clip"
+              title="Instant replay is recording — click to save a clip"
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition active:scale-95"
+              style={{ background: "var(--snug-pink)" }}
+            >
+              <span
+                className="inline-block h-2 w-2 flex-shrink-0 animate-[recPulse_1.6s_ease-in-out_infinite] rounded-full motion-reduce:animate-none"
+                style={{ background: "#FFFFFF" }}
+              />
+              <span className="text-xs font-extrabold" style={{ color: "#FFFFFF" }}>
+                REC
+              </span>
+            </button>
+          )}
           <div
             className="flex items-center gap-1 rounded-full bg-snug-chip px-2 py-1.5"
             title={`${members.length} of ${MAX_ROOM_MEMBERS} online`}
@@ -1693,19 +1760,89 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           <div className="flex-shrink-0 p-5 pb-3">
             <div className="flex items-center justify-between">
               <span className="font-display text-lg font-extrabold text-snug-text">Chat</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchOpen((s) => !s);
-                  setSearchQuery("");
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-snug-chip transition active:scale-95"
-              >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" className="text-snug-text">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m21 21-4.35-4.35" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Single-select, not checkboxes: these are mutually
+                    exclusive views of the same list, and "All" only means
+                    anything as one option among them. As a popover instead
+                    of a permanent chip row it gives the messages back
+                    ~34px — but a filter you can't see is a filter people
+                    forget is on, so the button itself turns accent-colored
+                    and grows a dot whenever anything but "All" is active. */}
+                <div className="relative" ref={chatFilterRef}>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen((f) => !f)}
+                    aria-haspopup="menu"
+                    aria-expanded={filterOpen}
+                    aria-label={`Filter messages: ${CHAT_FILTERS.find((f) => f.key === chatFilter)?.label ?? "All"}`}
+                    title={`Filter: ${CHAT_FILTERS.find((f) => f.key === chatFilter)?.label ?? "All"}`}
+                    className="relative flex h-8 w-8 items-center justify-center rounded-[11px] transition active:scale-95"
+                    style={{
+                      background: chatFilter === "all" ? "var(--snug-chip)" : "var(--snug-mint)",
+                      color: chatFilter === "all" ? "var(--snug-text)" : "var(--snug-on-accent)",
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 5h18l-7 8v6l-4 2v-8Z" />
+                    </svg>
+                    {chatFilter !== "all" && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full"
+                        style={{ background: "var(--snug-pink)" }}
+                      />
+                    )}
+                  </button>
+                  {filterOpen && (
+                    <div
+                      role="menu"
+                      className="animate-[popoverIn_140ms_cubic-bezier(0.16,1,0.3,1)] absolute top-[38px] right-0 z-20 w-[150px] origin-top-right rounded-[14px] bg-snug-surface p-1.5 shadow-snug-popover motion-reduce:animate-none"
+                    >
+                      {CHAT_FILTERS.map((f) => {
+                        const active = chatFilter === f.key;
+                        return (
+                          <button
+                            key={f.key}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={active}
+                            onClick={() => {
+                              setChatFilter(f.key);
+                              setFilterOpen(false);
+                            }}
+                            className="flex w-full items-center justify-between gap-2 rounded-[10px] px-2.5 py-2 text-left text-[12.5px] font-extrabold transition active:scale-[0.98]"
+                            style={{
+                              background: active ? "var(--snug-surface-tint)" : "transparent",
+                              color: active ? "var(--snug-text)" : "var(--snug-muted)",
+                            }}
+                          >
+                            {f.label}
+                            {active && (
+                              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--snug-mint)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="m20 6-11 11-5-5" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen((s) => !s);
+                    setSearchQuery("");
+                  }}
+                  aria-label="Search messages"
+                  aria-expanded={searchOpen}
+                  className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-snug-chip transition active:scale-95"
+                >
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" className="text-snug-text">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                </button>
+              </div>
             </div>
             {searchOpen && (
               <input
@@ -1717,34 +1854,9 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                 className="animate-[fadeIn_150ms_cubic-bezier(0.16,1,0.3,1)] mt-2.5 w-full rounded-xl border-none bg-snug-chip px-3 py-2 text-sm font-semibold text-snug-text outline-none placeholder:text-snug-placeholder motion-reduce:animate-none"
               />
             )}
-            <div className="mt-2.5 flex gap-1.5">
-              {(
-                [
-                  { key: "all", label: "All" },
-                  { key: "images", label: "Images" },
-                  { key: "videos", label: "Videos" },
-                  { key: "links", label: "Links" },
-                ] as const
-              ).map((f) => {
-                const active = chatFilter === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setChatFilter(f.key)}
-                    className="flex h-6 min-w-0 flex-1 items-center justify-center rounded-full px-1.5 text-[10.5px] font-extrabold transition active:scale-95"
-                    style={{
-                      background: active ? "var(--snug-mint)" : "var(--snug-chip)",
-                      color: active ? "var(--snug-on-accent)" : "var(--snug-muted)",
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
+          <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={chatScrollRef} className="flex flex-1 flex-col gap-3 overflow-auto px-5 py-1">
             {filteredMessages.length === 0 && (
               <p className="mt-4 text-center text-xs text-snug-muted">
@@ -1794,31 +1906,35 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="mx-5 mb-2 flex flex-shrink-0 flex-col items-center gap-0.5 rounded-2xl border-2 border-dashed py-3.5 transition disabled:opacity-60"
-            style={{
-              borderColor: isDraggingFile ? "var(--snug-mint)" : "var(--snug-divider)",
-              background: isDraggingFile ? "var(--snug-surface-tint)" : "var(--snug-chip)",
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={isDraggingFile ? "var(--snug-mint)" : "var(--snug-muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M17 8l-5-5-5 5" />
-              <path d="M12 3v12" />
-            </svg>
-            <span
-              className="text-xs font-extrabold"
-              style={{ color: isDraggingFile ? "var(--snug-mint)" : "var(--snug-muted)" }}
+          {/* Only while something is actually being dragged in. This used to
+              be a permanent dashed panel below the messages, which cost
+              ~70px of chat height at all times to advertise something the
+              composer's paperclip already does. As an overlay it costs
+              nothing until it's relevant, and it covers the whole message
+              area, which is a bigger and more obvious drop target than the
+              old strip was. */}
+          {isDraggingFile && (
+            <div
+              className="animate-[fadeIn_120ms_ease-out] pointer-events-none absolute inset-x-4 inset-y-2 z-10 flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed motion-reduce:animate-none"
+              style={{
+                borderColor: "var(--snug-mint)",
+                background: "var(--snug-surface-tint)",
+              }}
             >
-              {isDraggingFile ? "Drop to upload" : "Drag & drop here"}
-            </span>
-            <span className="text-[10.5px] font-bold text-snug-placeholder">
-              images, videos &amp; files
-            </span>
-          </button>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--snug-mint)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <path d="M17 8l-5-5-5 5" />
+                <path d="M12 3v12" />
+              </svg>
+              <span className="text-[13px] font-extrabold" style={{ color: "var(--snug-mint)" }}>
+                Drop to upload
+              </span>
+              <span className="text-[10.5px] font-bold text-snug-placeholder">
+                images, videos &amp; files
+              </span>
+            </div>
+          )}
+          </div>
           {uploading && (
             <p className="mx-5 mb-2 flex-shrink-0 text-center text-xs font-bold text-snug-muted">
               Uploading…

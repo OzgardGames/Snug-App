@@ -21,11 +21,10 @@ export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 // takes to upload it to R2 (or, for video, to also compress it first).
 const TMP_DIR = path.join(tmpdir(), "snug-uploads");
 // No auth on this server beyond room membership, so the ceiling doubles as
-// the disk-fill guard on a small mounted volume. 250MB still covers a real
-// phone video comfortably (compression shrinks it further after upload);
-// 1GB per file, which this used to allow, meant a handful of uploads could
-// fill the volume.
-const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
+// the disk-fill guard on a small mounted volume — but it still has to fit
+// what people actually want to share, including a long phone video or a
+// saved instant replay (compression shrinks both further after upload).
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_PREVIEW_FETCH_BYTES = 200 * 1024;
 
 await mkdir(UPLOADS_DIR, { recursive: true });

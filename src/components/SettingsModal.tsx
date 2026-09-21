@@ -529,7 +529,7 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
 
           <section>
             <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
-              Sound
+              Notifications
             </div>
             <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
               <div className="flex items-center gap-2.5">
@@ -555,14 +555,8 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
                 label="Sound effects"
               />
             </div>
-          </section>
-
-          {isDesktop && <RecordingSettings />}
-          {isDesktop && <ShortcutSettings />}
-
-          <section>
-            <div className="mb-1.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
-              Notifications
+            <div className="mt-3 mb-1 px-1 text-[11px] font-bold text-snug-muted">
+              Tell me when&hellip;
             </div>
             <div className="flex flex-col gap-0.5">
               {NOTIFICATION_ROWS.map((row) => (
@@ -580,6 +574,12 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
               ))}
             </div>
           </section>
+
+          {/* Desktop-only sections last, kept together: neither exists in a
+              browser tab, so they'd otherwise interrupt the list with a gap
+              for anyone on the web. */}
+          {isDesktop && <RecordingSettings />}
+          {isDesktop && <ShortcutSettings />}
     </>
   );
 

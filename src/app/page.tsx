@@ -367,21 +367,15 @@ function HomeForm() {
             />
           </div>
 
-          {/* Both tabs' fields stay mounted (so neither loses what you typed
-              when you flip between them), but only the active one takes up
-              room: each lives in its own grid ROW, and the inactive row is
-              collapsed to 0fr with its content clipped.
-              grid-template-rows animates between fr units, so the card
-              grows and shrinks smoothly instead of either jumping or — as
-              it did before, when both shared one stacked cell — permanently
-              reserving the taller "Create" fields' height and leaving a
-              ~300px dead gap above the button on the default "Join" tab. */}
-          <div
-            className="grid transition-[grid-template-rows] duration-[220ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-            style={{ gridTemplateRows: isJoin ? "1fr 0fr" : "0fr 1fr" }}
-          >
+          {/* Both tabs' fields stay mounted and share ONE grid cell, stacked
+              on top of each other — so this block is always as tall as the
+              taller "Create a room" set, whichever tab is showing. That's
+              deliberate: the window never changes size between Join,
+              Create, My Rooms and Settings, so nothing jumps or resizes
+              under the cursor as you move between them. */}
+          <div className="grid">
             <div
-              className="overflow-hidden transition-opacity duration-150"
+              className="col-start-1 row-start-1 transition-opacity duration-150"
               style={{
                 opacity: isJoin ? 1 : 0,
                 visibility: isJoin ? "visible" : "hidden",
@@ -404,7 +398,7 @@ function HomeForm() {
               />
             </div>
             <div
-              className="overflow-hidden transition-opacity duration-150"
+              className="col-start-1 row-start-1 transition-opacity duration-150"
               style={{
                 opacity: isJoin ? 0 : 1,
                 visibility: isJoin ? "hidden" : "visible",
