@@ -10,7 +10,12 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install --omit=dev
+# --ignore-scripts because package.json's postinstall copies the RNNoise
+# worklet and .wasm files out of node_modules into public/ — a browser-side
+# concern for the Next.js app. This image has neither scripts/ nor public/,
+# so the hook dies on a missing module and takes the whole build with it.
+# Nothing the signaling server imports has a meaningful install script.
+RUN npm install --omit=dev --ignore-scripts
 COPY server ./server
 
 EXPOSE 3001
