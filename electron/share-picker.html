@@ -7,8 +7,13 @@
   /* Mirrors snug/src/app/globals.css's token values. The theme is passed
      in as ?theme=... at load (see main.js) — this was hardcoded dark
      before, so it clashed with the rest of the app in light mode. */
+  /* No color-scheme declaration on purpose. These windows are
+     transparent: true (see main.js), and color-scheme makes Chromium paint
+     an opaque UA canvas behind the page — a black rectangle around the
+     card on dark, which html/body { background: transparent } can't undo.
+     Nothing here uses a native form control or scrollbar, so the property
+     buys nothing anyway. */
   :root {
-    color-scheme: light;
     --bg: #fdeef2;
     --surface: #ffffff;
     --chip: #ffffff;
@@ -18,7 +23,6 @@
     --shadow: rgba(42, 38, 64, 0.22);
   }
   :root[data-theme="dark"] {
-    color-scheme: dark;
     --bg: #17161f;
     --surface: #1e1c28;
     --chip: #25232f;

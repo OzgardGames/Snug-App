@@ -8,14 +8,18 @@
      ?theme=... at load and via window.overlay.onTheme afterwards (the
      overlay outlives a theme switch) — this used to be hardcoded dark,
      which clashed for anyone running the app in light mode. */
+  /* No color-scheme declaration on purpose. These windows are
+     transparent: true (see main.js), and color-scheme makes Chromium paint
+     an opaque UA canvas behind the page — a black rectangle around the
+     card on dark, which html/body { background: transparent } can't undo.
+     Nothing here uses a native form control or scrollbar, so the property
+     buys nothing anyway. */
   :root {
-    color-scheme: light;
     --btn-bg: rgba(255, 255, 255, 0.96);
     --btn-shadow: rgba(42, 38, 64, 0.22);
     --text: #2a2640;
   }
   :root[data-theme="dark"] {
-    color-scheme: dark;
     --btn-bg: rgba(37, 35, 47, 0.95);
     --btn-shadow: rgba(0, 0, 0, 0.35);
     --text: #f2f0f5;

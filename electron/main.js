@@ -86,7 +86,7 @@ const WINDOW_MODES = {
   // retroactively grow an already-smaller window on every platform, so
   // opening below the floor it enforces would leave the window stuck
   // violating its own minimum until the next manual resize.
-  full: { width: 1360, height: 800, resizable: true },
+  full: { width: 1360, height: 940, resizable: true },
 };
 // Derived, not guessed: the mic control bar (see page.tsx's "mic control
 // bar") is meant to always render at its full natural size, centered,
@@ -649,8 +649,18 @@ async function buildClipFromRing() {
         else resolve();
       });
     });
+    // Size and duration ride along so the app can say what it actually
+    // saved rather than just that it saved something — a clip's size is
+    // the thing people want to know before sharing it.
+    const saved = await fs.promises.stat(outputPath).catch(() => null);
+    const coveredMs = segments.reduce((sum, seg) => sum + (seg.endMs - seg.startMs), 0);
     await enforceStorageCap();
-    return { ok: true, path: outputPath };
+    return {
+      ok: true,
+      path: outputPath,
+      bytes: saved?.size ?? 0,
+      seconds: Math.round(coveredMs / 1000),
+    };
   } catch (err) {
     return {
       ok: false,
@@ -1127,8 +1137,10 @@ ipcMain.handle("recording:set-settings", (_event, next) => {
   const prevCaptureAudio = recordingSettings.captureAudio;
   recordingSettings = { ...recordingSettings, ...next };
   saveRecordingSettings();
-  // The tray states whether capture is live, so it has to hear about this.
+  // The tray and the room's REC badge both state whether capture is live,
+  // so both have to hear about this — wherever the change came from.
   refreshTrayMenu();
+  mainWindow?.webContents.send("recording:settings-changed", recordingSettings);
   if (recordingSettings.enabled && !wasEnabled) {
     startRecording();
   } else if (!recordingSettings.enabled && wasEnabled) {
