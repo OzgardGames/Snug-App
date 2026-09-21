@@ -27,6 +27,9 @@ export type RecordingSettings = {
   maxStorageGb: number;
 };
 export type RecordingUsage = { count: number; bytes: number; capGb: number };
+
+export type UpdateState = "idle" | "checking" | "downloading" | "ready" | "none" | "error" | "dev";
+export type UpdateStatus = { state: UpdateState; version: string | null; percent: number };
 export type RecordingSaveResult =
   | { ok: true; path: string; bytes: number; seconds: number }
   | { ok: false; error: string };
@@ -60,6 +63,11 @@ export type SnugDesktopBridge = {
   onRecordingSaved: (callback: (result: RecordingSaveResult) => void) => () => void;
   getRecordingUsage: () => Promise<RecordingUsage>;
   onRecordingSettingsChanged: (callback: (settings: RecordingSettings) => void) => () => void;
+  getAppVersion: () => Promise<string>;
+  getUpdateStatus: () => Promise<UpdateStatus>;
+  checkForUpdate: () => Promise<UpdateStatus>;
+  restartToUpdate: () => void;
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
 };
 
 export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";

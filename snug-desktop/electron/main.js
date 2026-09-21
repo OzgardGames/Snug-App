@@ -883,6 +883,98 @@ function dispatchToApp(channel) {
   mainWindow?.webContents.send(channel);
 }
 
+// ---- auto-update ----
+// Checks GitHub Releases for a newer build, downloads it in the
+// background, and applies it the next time the app quits.
+//
+// Nothing here ever interrupts: this app is meant to be running while
+// you're in a call or a game, so an update is never installed underneath
+// you and the app is never restarted for you. The most it does is say
+// there's one ready and offer a restart you choose to take.
+const { autoUpdater } = require("electron-updater");
+
+// null until a check has run; then one of "checking" | "available" |
+// "downloading" | "ready" | "none" | "error". Kept here so a renderer that
+// mounts late (the room, or Settings being opened) can ask for the current
+// state rather than having missed the event.
+let updateState = { state: "idle", version: null, percent: 0 };
+
+function setUpdateState(next) {
+  updateState = { ...updateState, ...next };
+  mainWindow?.webContents.send("update:status", updateState);
+  refreshTrayMenu();
+}
+
+function setupAutoUpdate() {
+  // Updates only make sense for an installed build — in dev there's no
+  // installer to replace, and electron-updater refuses anyway.
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  // The default, spelled out because it's the whole safety story: the
+  // downloaded installer runs when the app exits, not while it's in use.
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = {
+    info: (m) => console.log("[updater]", m),
+    warn: (m) => console.warn("[updater]", m),
+    error: (m) => console.error("[updater]", m),
+    debug: () => {},
+  };
+
+  autoUpdater.on("checking-for-update", () => setUpdateState({ state: "checking" }));
+  autoUpdater.on("update-available", (info) =>
+    setUpdateState({ state: "downloading", version: info?.version ?? null, percent: 0 }),
+  );
+  autoUpdater.on("update-not-available", () => setUpdateState({ state: "none", percent: 0 }));
+  autoUpdater.on("download-progress", (p) =>
+    setUpdateState({ state: "downloading", percent: Math.round(p?.percent ?? 0) }),
+  );
+  autoUpdater.on("update-downloaded", (info) =>
+    setUpdateState({ state: "ready", version: info?.version ?? null, percent: 100 }),
+  );
+  autoUpdater.on("error", (err) => {
+    const message = String(err?.message ?? err);
+    // A repo with no releases yet isn't a failure, it just means there's
+    // nothing newer than what's already installed — which is what "up to
+    // date" means to the person reading it.
+    if (message.includes("No published versions")) {
+      setUpdateState({ state: "none", percent: 0 });
+      return;
+    }
+    // Anything else is not worth bothering anyone about either — no
+    // network, or GitHub having a moment. It retries on the next interval.
+    console.error("[updater] check failed:", message);
+    setUpdateState({ state: "error" });
+  });
+
+  // Not at launch: the first seconds are busy starting the bundled server
+  // and painting the window, and an update can wait.
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 20_000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+}
+
+// Quitting through this path lets electron-updater swap the app in on the
+// way out — isQuitting first so the window's close handler doesn't just
+// hide it and leave the install waiting forever.
+function quitAndInstallUpdate() {
+  if (updateState.state !== "ready") return;
+  isQuitting = true;
+  autoUpdater.quitAndInstall();
+}
+
+ipcMain.handle("app:version", () => app.getVersion());
+ipcMain.handle("update:get-status", () => updateState);
+ipcMain.handle("update:check", async () => {
+  if (!app.isPackaged) return { ...updateState, state: "dev" };
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch {
+    setUpdateState({ state: "error" });
+  }
+  return updateState;
+});
+ipcMain.on("update:restart", () => quitAndInstallUpdate());
+
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     {
@@ -926,6 +1018,15 @@ function buildTrayMenu() {
           {
             label: "Save instant replay",
             click: () => triggerSaveClip(),
+          },
+          { type: "separator" },
+        ]
+      : []),
+    ...(updateState.state === "ready"
+      ? [
+          {
+            label: `Restart to update${updateState.version ? ` to ${updateState.version}` : ""}`,
+            click: () => quitAndInstallUpdate(),
           },
           { type: "separator" },
         ]
@@ -1414,6 +1515,7 @@ if (!gotSingleInstanceLock) {
     registerGlobalShortcuts();
     createTray();
     setupScreenShareSupport();
+    setupAutoUpdate();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

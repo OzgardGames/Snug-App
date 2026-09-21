@@ -10,6 +10,7 @@ import { useSoundEffectsPref, playSound } from "@/lib/sounds";
 import { getDesktopBridge } from "@/lib/desktopBridge";
 import { ShortcutSettings } from "@/components/ShortcutSettings";
 import { RecordingSettings } from "@/components/RecordingSettings";
+import { UpdateSettings } from "@/components/UpdateSettings";
 import {
   getPreferredMic,
   setPreferredMic,
@@ -580,6 +581,7 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
               for anyone on the web. */}
           {isDesktop && <RecordingSettings />}
           {isDesktop && <ShortcutSettings />}
+          {isDesktop && <UpdateSettings />}
     </>
   );
 

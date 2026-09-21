@@ -68,6 +68,15 @@ contextBridge.exposeInMainWorld("snugDesktop", {
   // the tray's "turn off" item, which would otherwise leave an open
   // Settings panel showing a stale toggle.
   onRecordingSettingsChanged: subscribeWithValue("recording:settings-changed"),
+
+  // Auto-update. The app never restarts itself — see setupAutoUpdate in
+  // main.js — so the UI's job is just to say when one is waiting and offer
+  // the restart.
+  getUpdateStatus: () => ipcRenderer.invoke("update:get-status"),
+  checkForUpdate: () => ipcRenderer.invoke("update:check"),
+  restartToUpdate: () => ipcRenderer.send("update:restart"),
+  onUpdateStatus: subscribeWithValue("update:status"),
+  getAppVersion: () => ipcRenderer.invoke("app:version"),
 });
 
 function subscribeWithValue(channel) {

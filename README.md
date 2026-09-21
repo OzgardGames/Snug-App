@@ -38,5 +38,30 @@ what an uploaded file is served back as), and the modal dialog behaviour.
 cd snug-desktop && npm run package:win
 ```
 
-Produces `release/Snug Setup 1.0.0.exe`. The build bundles ffmpeg, which
-stitches instant-replay segments together on save.
+Produces `release/Snug Setup <version>.exe`. The build bundles ffmpeg,
+which stitches instant-replay segments together on save.
+
+## Releasing an update
+
+The desktop app checks GitHub Releases for a newer version, downloads it
+quietly, and installs it the next time you quit. It never restarts itself
+while you're mid-call.
+
+To ship one:
+
+1. Bump `version` in `snug-desktop/package.json`. The updater compares
+   against this, so an unchanged version ships nothing.
+2. Set a GitHub token with `repo` scope and publish:
+
+   ```bash
+   cd snug-desktop
+   GH_TOKEN=<your token> npm run release
+   ```
+
+That builds and uploads the installer plus `latest.yml` — the manifest the
+updater reads — to a GitHub release. Installed copies pick it up within a
+few hours, or immediately via Settings → About → Check.
+
+Note the installer isn't code-signed, so Windows SmartScreen warns on first
+install. Updates themselves still apply; signing is what removes the
+warning.
