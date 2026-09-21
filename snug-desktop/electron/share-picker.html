@@ -1,0 +1,265 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Share your screen</title>
+<style>
+  /* Mirrors snug/src/app/globals.css's token values. The theme is passed
+     in as ?theme=... at load (see main.js) — this was hardcoded dark
+     before, so it clashed with the rest of the app in light mode. */
+  /* No color-scheme declaration on purpose. These windows are
+     transparent: true (see main.js), and color-scheme makes Chromium paint
+     an opaque UA canvas behind the page — a black rectangle around the
+     card on dark, which html/body { background: transparent } can't undo.
+     Nothing here uses a native form control or scrollbar, so the property
+     buys nothing anyway. */
+  :root {
+    --bg: #fdeef2;
+    --surface: #ffffff;
+    --chip: #ffffff;
+    --text: #2a2640;
+    --muted: #8a7c8c;
+    --divider: #f0e4ea;
+    --shadow: rgba(42, 38, 64, 0.22);
+  }
+  :root[data-theme="dark"] {
+    --bg: #17161f;
+    --surface: #1e1c28;
+    --chip: #25232f;
+    --text: #f2f0f5;
+    --muted: #8a8794;
+    --divider: #3a3745;
+    --shadow: rgba(0, 0, 0, 0.55);
+  }
+  :root {
+    /* Brand accents — identical in both themes. */
+    --mint: #38c9a8;
+    --pink: #ff6f91;
+    --peach: #fdba74;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .card {
+    width: 720px;
+    height: 560px;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-radius: 28px;
+    box-shadow: 0 24px 60px var(--shadow);
+    overflow: hidden;
+  }
+  .header {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 22px 14px;
+    flex-shrink: 0;
+  }
+  .mark {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+  .mark div { position: absolute; border-radius: 50%; }
+  .mark .r1 { inset: 0; border: 3px solid var(--mint); opacity: 0.55; }
+  .mark .r2 { inset: 4px; border: 3px solid var(--peach); opacity: 0.75; }
+  .mark .r3 { inset: 9px; background: var(--pink); }
+  .titles { min-width: 0; flex: 1; }
+  .title { font-size: 16px; font-weight: 800; color: var(--text); }
+  .subtitle { margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  .close {
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 11px;
+    border: none;
+    background: var(--chip);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 80ms ease, background-color 150ms ease;
+  }
+  .close:hover { background: var(--pink); }
+  .close:active { transform: scale(0.92); }
+
+  .tabs {
+    -webkit-app-region: no-drag;
+    display: flex;
+    gap: 6px;
+    padding: 0 22px 14px;
+    flex-shrink: 0;
+  }
+  .tab {
+    border: none;
+    background: var(--chip);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 800;
+    padding: 7px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .tab.active { background: var(--mint); color: #17161f; }
+
+  .grid-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 22px 22px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .source {
+    -webkit-app-region: no-drag;
+    border: 2px solid transparent;
+    background: var(--chip);
+    border-radius: 16px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 100ms ease, border-color 150ms ease, background-color 150ms ease;
+  }
+  .source:hover {
+    transform: translateY(-2px);
+    border-color: var(--mint);
+  }
+  .source:active { transform: translateY(0) scale(0.98); }
+  .thumb {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 10px;
+    background: var(--bg);
+    object-fit: cover;
+    display: block;
+  }
+  .source-name {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-icon { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+  .empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="mark"><div class="r1"></div><div class="r2"></div><div class="r3"></div></div>
+      <div class="titles">
+        <div class="title">Share your screen</div>
+        <div class="subtitle">Pick a screen or a window to share with the room</div>
+      </div>
+      <button class="close" id="close-btn" title="Cancel">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-filter="all">All</button>
+      <button class="tab" data-filter="screen">Screens</button>
+      <button class="tab" data-filter="window">Windows</button>
+    </div>
+    <div class="grid-scroll">
+      <div class="grid" id="grid">
+        <div class="empty">Loading sources…</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const grid = document.getElementById("grid");
+    let sources = [];
+    let filter = "all";
+
+    function render() {
+      const filtered = sources.filter((s) =>
+        filter === "all" ? true : filter === "screen" ? s.isScreen : !s.isScreen,
+      );
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty">Nothing to share here.</div>';
+        return;
+      }
+      grid.innerHTML = "";
+      for (const s of filtered) {
+        const card = document.createElement("button");
+        card.className = "source";
+        card.type = "button";
+        const thumb = s.thumbnail
+          ? `<img class="thumb" src="${s.thumbnail}" />`
+          : '<div class="thumb"></div>';
+        const icon = s.appIcon ? `<img class="app-icon" src="${s.appIcon}" />` : "";
+        card.innerHTML = `${thumb}<div class="source-name">${icon}<span>${escapeHtml(s.name || (s.isScreen ? "Screen" : "Window"))}</span></div>`;
+        card.addEventListener("click", () => window.sharePicker.pick(s.id));
+        grid.appendChild(card);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        filter = tab.dataset.filter;
+        render();
+      });
+    });
+
+    document.getElementById("close-btn").addEventListener("click", () => window.sharePicker.cancel());
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") window.sharePicker.cancel();
+    });
+
+    window.sharePicker.getSources().then((list) => {
+      sources = list;
+      render();
+    });
+  </script>
+<script>
+  // Theme comes in with the page URL (see main.js). The picker is
+  // short-lived, but onTheme keeps it correct if the theme changes while
+  // it happens to be open.
+  function applyPickerTheme(theme) {
+    if (theme === "dark") document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+  }
+  applyPickerTheme(new URLSearchParams(location.search).get("theme"));
+  window.sharePicker.onTheme(applyPickerTheme);
+</script>
+</body>
+</html>
