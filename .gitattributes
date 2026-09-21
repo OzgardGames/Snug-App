@@ -1,0 +1,12 @@
+# Normalise line endings in the repository. Without this, files committed
+# from Windows land with CRLF and the same file edited on another machine
+# shows up as a whole-file diff.
+* text=auto eol=lf
+
+# Binary assets, left untouched.
+*.png binary
+*.ico binary
+*.wasm binary
+*.mp4 binary
+*.webm binary
+*.db binary
