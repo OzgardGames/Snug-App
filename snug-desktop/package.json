@@ -57,7 +57,8 @@
       {
         "provider": "github",
         "owner": "OzgardGames",
-        "repo": "Snug-App"
+        "repo": "Snug-App",
+        "releaseType": "release"
       }
     ]
   },
