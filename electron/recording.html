@@ -166,10 +166,15 @@
     mediaRecorder = recorder;
 
     restartTimer = setTimeout(() => {
-      // Don't await this — the whole point of restarting immediately
-      // below is that there's no capture gap while the just-finished
-      // segment's blob gets built and shipped off to main.js in the
-      // background.
+      // Stop first, then start. Overlapping the two recorders was tried to
+      // close the ~70ms gap a rotation leaves, and measurably backfired:
+      // two encoders on the same 1080p60 stream more than halved the
+      // frame rate that actually made it into the file (45.9fps -> 20.9),
+      // turning a small seam into dropouts throughout. One encoder at a
+      // time is the cheaper trade.
+      //
+      // finalizeSegment isn't awaited — building and shipping the blob
+      // happens in the background while the next segment records.
       finalizeSegment(recorder);
       startSegment();
     }, currentSegmentSeconds * 1000);

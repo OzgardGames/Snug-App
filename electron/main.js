@@ -317,7 +317,12 @@ function createSplashWindow() {
     height: 220,
     frame: false,
     transparent: true,
-    hasShadow: true,
+    // false, like every other transparent window here. Windows draws the
+    // native shadow against an opaque backing, which shows through
+    // wherever the page itself is transparent — as black wedges behind the
+    // card's rounded corners. The card draws its own shadow in CSS, so
+    // there's nothing to lose by turning this off.
+    hasShadow: false,
     resizable: false,
     movable: true,
     center: true,
@@ -543,7 +548,16 @@ async function handleSegmentReady({ arrayBuffer, extension, mimeType, width, hei
     await fs.promises.mkdir(SEGMENTS_DIR, { recursive: true });
     const file = path.join(SEGMENTS_DIR, `seg-${segmentSeq++}.${extension}`);
     await fs.promises.writeFile(file, Buffer.from(arrayBuffer));
-    segmentRing.push({ file, mimeType, width, height, fps, hasAudio, startMs, endMs });
+    // Inserted by start time, NOT appended. Two segments can be in flight
+    // at once — a save flushes one the instant after a periodic rotation —
+    // and since the push happens after the awaits above, whichever write
+    // finished first used to land first. An out-of-order ring means ffmpeg
+    // concatenates the pieces out of sequence, which is exactly the "video
+    // hangs then jumps" a reordered clip produces.
+    const entry = { file, mimeType, width, height, fps, hasAudio, startMs, endMs };
+    const at = segmentRing.findIndex((seg) => seg.startMs > startMs);
+    if (at === -1) segmentRing.push(entry);
+    else segmentRing.splice(at, 0, entry);
     pruneSegmentRing();
   } catch (err) {
     console.error("[snug-desktop] failed to persist instant-replay segment:", err);
@@ -575,9 +589,28 @@ function selectSegmentsForConcat() {
     ) {
       break;
     }
+    // Stop at a real hole in the timeline. Segments normally butt up
+    // against each other within a few milliseconds; a larger jump means
+    // one is missing (a failed write, or pruning that outran the save),
+    // and joining across it would produce a clip that freezes and then
+    // skips ahead. A shorter but continuous clip is the better answer.
+    const next = selected[0];
+    if (next && next.startMs - seg.endMs > SEGMENT_SECONDS * 1000) break;
     selected.unshift(seg);
     coveredMs += seg.endMs - seg.startMs;
     if (coveredMs >= wantMs) break;
+  }
+
+  // Drop a stub of a first segment. The oldest one in the ring is often a
+  // partial — capture started, or a setting changed, partway through its
+  // slot — and joining from one produced a multi-second freeze at the head
+  // of the clip: the join places the following segment at a full slot's
+  // offset, so a 0.9s piece in a 3s slot leaves 2s of nothing. Measured,
+  // dropping it took the clip from one 2066ms stall to no gaps at all, at
+  // the cost of a second or so off the front.
+  if (selected.length > 1) {
+    const first = selected[0];
+    if (first.endMs - first.startMs < SEGMENT_SECONDS * 1000 * 0.6) selected.shift();
   }
   return selected;
 }
@@ -587,6 +620,72 @@ function selectSegmentsForConcat() {
 // work reliably cross-platform, including on Windows paths.
 function concatListLine(filePath) {
   return `file '${filePath.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    execFile(ffmpegPath, args, (err, _stdout, stderr) => {
+      if (err) reject(new Error(stderr?.toString().slice(-500) || err.message));
+      else resolve();
+    });
+  });
+}
+
+// Joins the segments WITHOUT re-encoding video, by way of MPEG-TS.
+//
+// The obvious approach — ffmpeg's concat demuxer straight into MP4 — turns
+// out to lose frames. Each segment is an independent recording whose
+// timestamps start at zero, and once they're offset and stacked the MP4
+// muxer hits DTS values that don't strictly increase and silently drops
+// those frames: a measured 7-segment, 707-frame capture came out the other
+// side with 604, one frame lost per "non monotonically increasing dts"
+// warning. That's the stutter — the gaps land at the seams, so playback
+// hangs every few seconds and then catches up.
+//
+// MPEG-TS is designed to be concatenated (it's how broadcast streams are
+// spliced), so remuxing each segment to TS, joining those, and remuxing
+// back to MP4 keeps every frame. All three steps are stream copies; the
+// only re-encode is the audio, for the reason below. The same 707-frame
+// capture comes out as 707 frames with no gaps.
+async function concatViaMpegTs(segments, outputPath, workDir) {
+  const tsFiles = [];
+  try {
+    for (const [i, seg] of segments.entries()) {
+      const tsPath = path.join(workDir, `join-${Date.now()}-${i}.ts`);
+      // h264_mp4toannexb converts the MP4-style length-prefixed NAL units
+      // into the start-code form TS expects.
+      await runFfmpeg(["-y", "-i", seg.file, "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", tsPath]);
+      tsFiles.push(tsPath);
+    }
+    const args = ["-y", "-i", `concat:${tsFiles.join("|")}`, "-c:v", "copy"];
+    // Audio is re-encoded rather than copied. Each segment carries its own
+    // AAC encoder priming samples, and copying them end to end leaves those
+    // embedded mid-file — real output showed decoder errors and a click at
+    // every boundary. Re-encoding produces one continuous track, and for a
+    // clip this short it's trivial next to the video copy.
+    if (segments[0].hasAudio) args.push("-c:a", "aac", "-b:a", "160k");
+    args.push(outputPath);
+    await runFfmpeg(args);
+  } finally {
+    for (const f of tsFiles) fs.unlink(f, () => {});
+  }
+}
+
+// WebM/VP9 can't go through TS, so that fallback path keeps the concat
+// demuxer. It's only reached on machines where H.264 recording isn't
+// available at all.
+async function concatViaDemuxer(segments, outputPath, workDir) {
+  const listPath = path.join(workDir, `concat-${Date.now()}.txt`);
+  const list = segments.map((s) => concatListLine(s.file)).join("\n");
+  await fs.promises.writeFile(listPath, list, "utf8");
+  try {
+    const args = ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c:v", "copy", "-avoid_negative_ts", "make_zero"];
+    if (segments[0].hasAudio) args.push("-c:a", "libopus", "-b:a", "160k");
+    args.push(outputPath);
+    await runFfmpeg(args);
+  } finally {
+    fs.unlink(listPath, () => {});
+  }
 }
 
 async function buildClipFromRing() {
@@ -600,55 +699,10 @@ async function buildClipFromRing() {
     RECORDINGS_DIR,
     `snug-replay-${new Date().toISOString().replace(/[:.]/g, "-")}${ext}`,
   );
-  const listPath = path.join(SEGMENTS_DIR, `concat-${Date.now()}.txt`);
-  await fs.promises.writeFile(listPath, segments.map((s) => concatListLine(s.file)).join("\n"), "utf8");
-  // Video is stream-copied — it's the expensive part, it's already encoded
-  // exactly how we want it, and re-encoding would cost both quality and CPU
-  // for nothing.
-  //
-  // Audio is re-encoded, deliberately. Each segment is an independent AAC
-  // stream with its own encoder priming samples at the front, and copying
-  // them end to end leaves those priming frames embedded mid-file: real
-  // output showed decoder errors ("Invalid data found") and non-monotonic
-  // timestamps at every segment boundary, which is a click or a stutter
-  // every few seconds. Decoding and re-encoding produces one continuous,
-  // properly-timed track instead, and for a clip this short it's a
-  // negligible amount of work next to the copy.
-  //
-  // -avoid_negative_ts make_zero normalizes the joined timeline so the file
-  // starts at zero rather than inheriting a segment's own offsets.
-  //
-  // Known and accepted: the copied video stream still carries a handful of
-  // duplicate DTS values at the segment seams, because that's how the
-  // segments come out of MediaRecorder. Every frame decodes, the frame
-  // count and duration are correct, and players handle it — only a strict
-  // re-mux complains. Clearing it properly would mean re-encoding video,
-  // which is exactly the hardware-encoded quality and CPU saving this
-  // whole design exists to protect. (-fflags +genpts was tried and barely
-  // moved it, so it isn't here.)
-  const ffmpegArgs = [
-    "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listPath,
-    "-c:v",
-    "copy",
-    "-avoid_negative_ts",
-    "make_zero",
-  ];
-  if (segments[0].hasAudio) ffmpegArgs.push("-c:a", "aac", "-b:a", "160k");
-  ffmpegArgs.push(outputPath);
 
   try {
-    await new Promise((resolve, reject) => {
-      execFile(ffmpegPath, ffmpegArgs, (err, _stdout, stderr) => {
-        if (err) reject(new Error(stderr?.toString().slice(-500) || err.message));
-        else resolve();
-      });
-    });
+    if (ext === ".mp4") await concatViaMpegTs(segments, outputPath, SEGMENTS_DIR);
+    else await concatViaDemuxer(segments, outputPath, SEGMENTS_DIR);
     // Size and duration ride along so the app can say what it actually
     // saved rather than just that it saved something — a clip's size is
     // the thing people want to know before sharing it.
@@ -666,8 +720,6 @@ async function buildClipFromRing() {
       ok: false,
       error: `Couldn't put the clip together: ${err instanceof Error ? err.message : String(err)}`,
     };
-  } finally {
-    fs.unlink(listPath, () => {});
   }
 }
 
