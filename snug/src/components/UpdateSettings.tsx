@@ -8,7 +8,7 @@ import type { UpdateStatus } from "@/lib/desktopBridge";
 // main.js for the behaviour this reflects — updates download quietly and
 // are applied on quit, so the only thing this ever asks of anyone is a
 // restart they choose to take.
-export function UpdateSettings() {
+export function UpdateSettings({ showHeading = true }: { showHeading?: boolean } = {}) {
   const [version, setVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
@@ -43,9 +43,11 @@ export function UpdateSettings() {
 
   return (
     <section>
-      <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
-        About
-      </div>
+      {showHeading && (
+        <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
+          About
+        </div>
+      )}
       <div className="rounded-2xl bg-snug-chip px-3.5 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">

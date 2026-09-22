@@ -31,7 +31,7 @@ const RESOLUTION_OPTIONS: { value: RecordingResolution; label: string }[] = [
 // Desktop-only, same reasoning as ShortcutSettings — the actual capture is
 // a main-process/Electron concept (getUserMedia running in a hidden
 // window), nothing here has a browser-tab equivalent.
-export function RecordingSettings() {
+export function RecordingSettings({ showHeading = true }: { showHeading?: boolean } = {}) {
   const [settings, setSettings] = useState<RecordingSettingsValue | null>(null);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -88,9 +88,11 @@ export function RecordingSettings() {
 
   return (
     <section>
-      <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
-        Instant Replay
-      </div>
+      {showHeading && (
+        <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
+          Instant Replay
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
           <div className="min-w-0 pr-3">

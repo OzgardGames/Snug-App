@@ -8,7 +8,7 @@ import { acceleratorFromKeyEvent, formatAccelerator } from "@/lib/shortcuts";
 // Desktop-only — global shortcuts are a main-process (Electron) concept
 // with no equivalent in a browser tab, so this whole section only renders
 // when getDesktopBridge() is actually present (see SettingsModal).
-export function ShortcutSettings() {
+export function ShortcutSettings({ showHeading = true }: { showHeading?: boolean } = {}) {
   const [bindings, setBindings] = useState<ShortcutBindings | null>(null);
   const [actions, setActions] = useState<Record<string, string>>({});
   const [listeningFor, setListeningFor] = useState<string | null>(null);
@@ -71,9 +71,11 @@ export function ShortcutSettings() {
 
   return (
     <section>
-      <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
-        Shortcuts
-      </div>
+      {showHeading && (
+        <div className="mb-2.5 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
+          Shortcuts
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         {Object.entries(actions).map(([action, label]) => {
           const listening = listeningFor === action;
