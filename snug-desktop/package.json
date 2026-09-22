@@ -7,7 +7,7 @@
     "dev": "electron .",
     "build:frontend": "node scripts/build-frontend.js",
     "package:win": "npm run build:frontend && electron-builder --win",
-    "release": "npm run build:frontend && electron-builder --win --publish always"
+    "release": "node scripts/ensure-tag.js && npm run build:frontend && electron-builder --win --publish always"
   },
   "author": "",
   "license": "ISC",
