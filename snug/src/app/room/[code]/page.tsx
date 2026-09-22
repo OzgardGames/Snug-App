@@ -18,7 +18,6 @@ import { useNotificationPrefs, fireNotification, type NotificationPrefs } from "
 import { playSound } from "@/lib/sounds";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
-import { formatFileSize } from "@/lib/formatFileSize";
 import { dragRegion, noDragRegion } from "@/lib/desktopDrag";
 import { WindowControlsPill } from "@/components/WindowControlsPill";
 import { ResizeHandles } from "@/components/ResizeHandles";
@@ -103,12 +102,27 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   // that capture is live. Updated both on mount and whenever anything else
   // changes it (Settings, or the tray's own "turn off").
   const [recordingActive, setRecordingActive] = useState(false);
+  const [recordingToggling, setRecordingToggling] = useState(false);
+  // Drives the toggle's pop animation (recTogglePop in globals.css) — kept
+  // separate from recordingToggling above so it fires for ANY change in
+  // recordingActive, not just a click on this button. Recording can also
+  // flip from the tray or Settings, and the toggle should still feel like
+  // it reacted rather than silently updating out from under whoever's
+  // looking at it.
+  const [recordingJustChanged, setRecordingJustChanged] = useState(false);
+  const recordingMounted = useRef(false);
   useEffect(() => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     bridge.getRecordingSettings().then((r) => setRecordingActive(r.enabled)).catch(() => {});
     return bridge.onRecordingSettingsChanged((r) => setRecordingActive(r.enabled));
   }, []);
+  function handleToggleRecording() {
+    setRecordingToggling(true);
+    getDesktopBridge()
+      ?.setRecordingSettings({ enabled: !recordingActive })
+      .finally(() => setRecordingToggling(false));
+  }
   const chatFilterRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!filterOpen) return;
@@ -164,6 +178,36 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
       timeouts.clear();
     };
   }, []);
+  useEffect(() => {
+    // Skip the very first render — this should only fire on an actual
+    // change, not announce whatever state recording already happened to be
+    // in when the room loaded.
+    if (!recordingMounted.current) {
+      recordingMounted.current = true;
+      return;
+    }
+    setRecordingJustChanged(true);
+    scheduleTimeout(() => setRecordingJustChanged(false), 280);
+  }, [recordingActive, scheduleTimeout]);
+
+  // Brief mint/pink flash on the save button after a save attempt — same
+  // feedback and timing as the overlay's own save-replay button (see
+  // overlay.html), so the two feel like the same control. The actual
+  // "saved!" news now travels as a native OS notification (see
+  // notifyRecordingSaveResult in main.js) instead of an in-app toast: the
+  // whole point of instant replay is capturing a game that has focus, not
+  // Snug, so a toast inside this window was invisible exactly when it
+  // mattered. This flash is just local confirmation for whoever's looking
+  // at this button when they click it.
+  const [saveFlash, setSaveFlash] = useState<"ok" | "fail" | null>(null);
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    return bridge.onRecordingSaved((result) => {
+      setSaveFlash(result.ok ? "ok" : "fail");
+      scheduleTimeout(() => setSaveFlash(null), 1200);
+    });
+  }, [scheduleTimeout]);
   const [localVolumes, setLocalVolumes] = useState<Record<string, number>>({});
   const [localMutes, setLocalMutes] = useState<Record<string, boolean>>({});
   // "Deafen" — mutes every incoming voice at once, for the desktop app's
@@ -303,34 +347,6 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
       offShare();
     };
   }, [status]);
-
-  // Instant replay saves come from the overlay button, the global
-  // shortcut, or Settings' own "Save clip now" — none of which have
-  // anywhere to show a result themselves (the overlay has no room for
-  // text, Settings might not even be open), so this is the one place
-  // that surfaces it, regardless of which of those triggered it.
-  useEffect(() => {
-    const bridge = getDesktopBridge();
-    if (!bridge) return;
-    return bridge.onRecordingSaved((result) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const item = result.ok
-        ? {
-            id,
-            kind: "recording" as const,
-            // What was saved, in the terms someone deciding whether to
-            // share it cares about — length and size, not a long path.
-            title: `Replay saved — ${result.seconds}s, ${formatFileSize(result.bytes)}`,
-            body: "Click to open the recordings folder",
-            onClick: () => void getDesktopBridge()?.openRecordingsFolder(),
-          }
-        : { id, kind: "recording" as const, title: "Couldn't save the replay", body: result.error };
-      setToasts((prev) => [...prev, item]);
-      scheduleTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 6000);
-    });
-  }, [scheduleTimeout]);
 
   useEffect(() => {
     getDesktopBridge()?.reportMuteState(voice.muted || isForceMuted);
@@ -904,25 +920,77 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           style={isDesktop ? noDragRegion : undefined}
         >
           {/* Instant replay otherwise runs with no window and nothing on
-              screen — this is the only in-app sign that your screen is
-              being captured. Clicking it saves the clip, which is also the
-              thing you most likely want when you notice it. */}
-          {recordingActive && (
+              screen — this button IS the only in-app sign that your screen
+              is being captured, and now also the on/off switch for it, so
+              there's a reason to check it even before it's recording. Stays
+              visible either way; only its color/label change. Going to
+              Settings for this is still there, just no longer required for
+              the everyday case. */}
+          {isDesktop && (
+            <button
+              type="button"
+              onClick={handleToggleRecording}
+              disabled={recordingToggling}
+              aria-label={
+                recordingActive
+                  ? "Instant replay is recording — click to turn off"
+                  : "Turn on instant replay"
+              }
+              title={
+                recordingActive
+                  ? "Instant replay is recording — click to turn off"
+                  : "Turn on instant replay"
+              }
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition active:scale-95 disabled:opacity-70 ${
+                recordingJustChanged
+                  ? "animate-[recTogglePop_280ms_cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none"
+                  : ""
+              }`}
+              style={{ background: recordingActive ? "var(--snug-pink)" : "var(--snug-chip)" }}
+            >
+              <span
+                className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+                  recordingActive
+                    ? "animate-[recPulse_1.6s_ease-in-out_infinite] motion-reduce:animate-none"
+                    : ""
+                }`}
+                style={{ background: recordingActive ? "#FFFFFF" : "var(--snug-muted)" }}
+              />
+              <span
+                className="text-xs font-extrabold"
+                style={{ color: recordingActive ? "#FFFFFF" : "var(--snug-muted)" }}
+              >
+                REC
+              </span>
+            </button>
+          )}
+          {/* Only appears once there's actually a buffer to save from — same
+              icon as the overlay's own save-replay button (see
+              overlay.html) so it reads as the same control whichever one
+              you happen to be looking at. Flashes mint/pink on the result,
+              also matching the overlay; the actual "saved" news travels as
+              a native OS notification instead — see saveFlash above. */}
+          {isDesktop && recordingActive && (
             <button
               type="button"
               onClick={() => getDesktopBridge()?.saveReplayNow()}
-              aria-label="Instant replay is recording — save a clip"
-              title="Instant replay is recording — click to save a clip"
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition active:scale-95"
-              style={{ background: "var(--snug-pink)" }}
+              aria-label="Save an instant replay clip"
+              title="Save an instant replay clip"
+              className="flex h-[30px] w-[30px] flex-shrink-0 animate-[saveButtonAppear_320ms_cubic-bezier(0.34,1.56,0.64,1)] items-center justify-center rounded-full transition active:scale-95 motion-reduce:animate-none"
+              style={{
+                background:
+                  saveFlash === "ok"
+                    ? "var(--snug-mint)"
+                    : saveFlash === "fail"
+                      ? "var(--snug-pink)"
+                      : "var(--snug-peach)",
+                transformOrigin: "left center",
+              }}
             >
-              <span
-                className="inline-block h-2 w-2 flex-shrink-0 animate-[recPulse_1.6s_ease-in-out_infinite] rounded-full motion-reduce:animate-none"
-                style={{ background: "#FFFFFF" }}
-              />
-              <span className="text-xs font-extrabold" style={{ color: "#FFFFFF" }}>
-                REC
-              </span>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--snug-on-accent)" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2.5" y="5.5" width="13" height="13" rx="2.5" />
+                <path d="m18.5 9 3-2v10l-3-2" />
+              </svg>
             </button>
           )}
           <div

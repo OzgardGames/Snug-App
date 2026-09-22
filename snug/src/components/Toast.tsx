@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-export type ToastKind = "join" | "share" | "message" | "recording";
+export type ToastKind = "join" | "share" | "message";
 
 export type ToastItem = {
   id: string;
@@ -48,16 +48,6 @@ const KIND_STYLE: Record<ToastKind, { bg: string; fg: string; icon: ReactNode }>
     icon: (
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />
-      </svg>
-    ),
-  },
-  recording: {
-    bg: "bg-snug-peach",
-    fg: "text-snug-on-accent",
-    icon: (
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2.5" y="5.5" width="13" height="13" rx="2.5" />
-        <path d="m18.5 9 3-2v10l-3-2" />
       </svg>
     ),
   },

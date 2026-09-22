@@ -156,6 +156,39 @@ body.desktop-window-transparent {
   }
 }
 
+/* Plays on the REC toggle itself every time recording actually turns on or
+   off — whichever end started it (the button's own click, the tray, a
+   global shortcut) — so flipping the switch always reads as a deliberate,
+   felt action rather than a silent color swap. */
+@keyframes recTogglePop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* The save-clip button's entrance, timed to land right as the toggle's own
+   pop above is finishing. transform-origin: left center (set inline where
+   this is used) plus growing FROM the toggle's edge rather than just
+   fading in is what sells "this button belongs to that one" — it reads as
+   grown out of the REC pill, not as an unrelated element that happened to
+   show up next to it. */
+@keyframes saveButtonAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.4) translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
 @keyframes talkRingPulse {
   0%,
   100% {
