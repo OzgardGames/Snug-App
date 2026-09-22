@@ -19,13 +19,11 @@
     --surface: #ffffff;
     --text: #2a2640;
     --muted: #8a7c8c;
-    --shadow: rgba(42, 38, 64, 0.22);
   }
   :root[data-theme="dark"] {
     --surface: #1e1c28;
     --text: #f2f0f5;
     --muted: #8a8794;
-    --shadow: rgba(0, 0, 0, 0.45);
   }
   :root {
     /* Brand accents are the same in both themes. */
@@ -56,7 +54,22 @@
     gap: 14px;
     background: var(--surface);
     border-radius: 28px;
-    box-shadow: 0 24px 60px var(--shadow);
+    /* No box-shadow. The card fills the window exactly (100% x 100%, same
+       320x220 as the BrowserWindow in main.js) with no margin around it for
+       a shadow to fade into, so a blurred shadow here has nowhere to go —
+       it gets hard-clipped by the window's own rectangular edge instead of
+       fading out. That clipped rectangle, semi-transparent and tinted by
+       --shadow, is exactly what reads as a faint square "ghost" behind the
+       card's rounded corners: the shadow's blur curves inward following
+       nothing, because the thing cutting it off is the window's hard,
+       unrounded edge, not the card's own radius. Fixing this properly would
+       mean sizing the window bigger than the card and inset-ing the card
+       within it (so the blur has room to dissipate before hitting the
+       window edge) — real effort for a screen that's on-screen for about
+       two seconds. Dropping the shadow is the actual fix: it's what
+       hasShadow: false already promised (see the BrowserWindow options in
+       main.js) but only half-delivered, since that flag only ever
+       controlled the OS-drawn window shadow, never this CSS one. */
   }
   .mark {
     position: relative;

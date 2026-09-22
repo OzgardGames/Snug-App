@@ -20,7 +20,6 @@
     --text: #2a2640;
     --muted: #8a7c8c;
     --divider: #f0e4ea;
-    --shadow: rgba(42, 38, 64, 0.22);
   }
   :root[data-theme="dark"] {
     --bg: #17161f;
@@ -29,7 +28,6 @@
     --text: #f2f0f5;
     --muted: #8a8794;
     --divider: #3a3745;
-    --shadow: rgba(0, 0, 0, 0.55);
   }
   :root {
     /* Brand accents — identical in both themes. */
@@ -54,7 +52,11 @@
     flex-direction: column;
     background: var(--surface);
     border-radius: 28px;
-    box-shadow: 0 24px 60px var(--shadow);
+    /* No box-shadow — same reasoning as splash.html's .card: this panel is
+       exactly the size of its transparent BrowserWindow (720x560 in
+       main.js, matched here), with no margin for a blurred shadow to fade
+       into. It was getting hard-clipped into a faint rectangular ghost
+       behind the rounded corners instead. */
     overflow: hidden;
   }
   .header {
