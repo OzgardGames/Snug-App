@@ -17,6 +17,13 @@ const path = require("node:path");
 const http = require("node:http");
 const fs = require("node:fs");
 
+// Windows identifies an app to the shell by its "Application User Model
+// ID" — it drives taskbar grouping and how a pinned/Start Menu shortcut
+// maps back to the running process. The installer's shortcut sets one too,
+// but only once the app is actually installed; this covers every launch
+// path, matches package.json's build.appId, and is a no-op elsewhere.
+app.setAppUserModelId("app.snug.desktop");
+
 // electron-builder's files/extraResources filtering silently strips
 // node_modules no matter what pattern is given (see afterPack.js's own
 // comment on the same limitation for the standalone server) — so the
@@ -52,6 +59,8 @@ let overlayWindow = null;
 let sharePickerWindow = null;
 let splashWindow = null;
 let recordingWindow = null;
+let notificationWindow = null;
+let notificationTimer = null;
 let tray = null;
 // Reported by the renderer via preload's reportMuteState — reflected in
 // the tray menu label.
@@ -193,6 +202,11 @@ async function createWindow() {
     frame: false,
     transparent: true,
     hasShadow: false,
+    // Same reasoning as the splash window's roundedCorners: false — the
+    // compact-mode card (see createWindow's comment above) fills this
+    // window exactly the way the splash card does, so it's exposed to the
+    // identical Windows-11-vs-CSS-radius mismatch at the corners.
+    roundedCorners: false,
     // Stays hidden until "ready-to-show" (first real paint) so the boot
     // wait — waitForServer below, plus loadURL — shows the splash screen
     // instead of a blank/invisible transparent rectangle.
@@ -323,6 +337,16 @@ function createSplashWindow() {
     // card's rounded corners. The card draws its own shadow in CSS, so
     // there's nothing to lose by turning this off.
     hasShadow: false,
+    // This is the OTHER source of black wedges at the card's corners, and
+    // the one that was still there after hasShadow:false: Windows 11
+    // (build 22000+) rounds every frameless window's corners itself,
+    // independent of anything the page draws. That OS-level clip is a
+    // DIFFERENT radius than the card's own CSS border-radius: 28px, so on
+    // a fully transparent window the two roundings don't line up, and the
+    // sliver between them composites as opaque black instead of see-
+    // through. The card already draws its own 28px corners in CSS — the
+    // window doesn't need Windows rounding its corners too.
+    roundedCorners: false,
     resizable: false,
     movable: true,
     center: true,
@@ -778,12 +802,114 @@ async function enforceStorageCap() {
   }
 }
 
+// Mirrors snug/src/lib/formatFileSize.ts — this file is plain CommonJS and
+// can't import that module directly, so kept in sync by hand. Only whole
+// units matter here (a notification someone glances at mid-game, not a
+// precise readout), same as the original.
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+// The one surface that actually reaches someone while they're playing:
+// Snug's own window is in the background the whole time instant replay is
+// useful for, and the overlay (if it's even on) only has room for a button
+// flash, no text.
+//
+// This used to be a native OS notification, and is now Snug's own window so
+// it looks like the rest of the app instead of like Windows. Two things
+// that buys beyond appearance: Focus Assist auto-enables during fullscreen
+// games and silently swallows native toasts — exactly when instant replay
+// matters most — and a native toast can't be styled at all. What it costs:
+// no entry in Action Center to scroll back to afterwards, and (same
+// limitation as the overlay) it can't draw over an EXCLUSIVE fullscreen
+// game, only windowed and borderless.
+//
+// The window flags here are not incidental. focusable: false plus
+// showInactive() is the same pairing the overlay needs: without both, a
+// window appearing over a game steals keyboard focus the moment it shows,
+// which is precisely what broke Alt+F4 and Alt+Tab for this app before.
+// setIgnoreMouseEvents keeps it from swallowing clicks aimed at whatever's
+// behind it — it's on screen for seconds at a time in a corner someone may
+// well be clicking in, and a confirmation message has no business
+// intercepting that.
+const NOTIFICATION_MS = 4200;
+const NOTIFICATION_WIDTH = 380;
+const NOTIFICATION_HEIGHT = 130;
+
+function notifyRecordingSaveResult(result) {
+  const search = new URLSearchParams({
+    theme: uiTheme,
+    kind: result.ok ? "ok" : "fail",
+    title: result.ok ? "Instant replay saved" : "Couldn't save replay",
+    detail: result.ok ? `${result.seconds}s · ${formatBytes(result.bytes)}` : (result.error ?? ""),
+    ms: String(NOTIFICATION_MS),
+  }).toString();
+
+  // Bottom-right of the WORK area (not the raw screen bounds) so it sits
+  // above the taskbar rather than under it, on whichever display is
+  // currently primary.
+  const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
+  const bounds = {
+    x: x + width - NOTIFICATION_WIDTH,
+    y: y + height - NOTIFICATION_HEIGHT,
+    width: NOTIFICATION_WIDTH,
+    height: NOTIFICATION_HEIGHT,
+  };
+
+  clearTimeout(notificationTimer);
+
+  // Reuse the existing window when one is still up — a second save landing
+  // while the first is on screen should replace it, not stack a second card
+  // on top of it. Re-loading the file replays the entrance animation, so it
+  // still reads as a new arrival.
+  if (notificationWindow && !notificationWindow.isDestroyed()) {
+    notificationWindow.setBounds(bounds);
+    notificationWindow.loadFile(path.join(__dirname, "notification.html"), { search });
+  } else {
+    const win = new BrowserWindow({
+      ...bounds,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      roundedCorners: false,
+      show: false,
+      focusable: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.setIgnoreMouseEvents(true, { forward: true });
+    win.loadFile(path.join(__dirname, "notification.html"), { search });
+    win.once("ready-to-show", () => win.showInactive());
+    win.on("closed", () => {
+      if (notificationWindow === win) notificationWindow = null;
+    });
+    notificationWindow = win;
+  }
+
+  notificationTimer = setTimeout(() => {
+    if (notificationWindow && !notificationWindow.isDestroyed()) notificationWindow.close();
+  }, NOTIFICATION_MS);
+}
+
 // Broadcasts a save result to every surface that might be showing
-// feedback for it — the main window (a toast) and the overlay (a brief
-// flash on its own save button), whichever of those happen to exist.
+// feedback for it — the room's own save button (a brief flash) and the
+// overlay's (same), plus a native OS notification for whichever of those
+// nobody's actually looking at right now, which mid-game is usually both.
 function notifyRecordingResult(result) {
   mainWindow?.webContents.send("recording:saved", result);
   overlayWindow?.webContents.send("overlay:save-result", result);
+  notifyRecordingSaveResult(result);
 }
 
 function triggerSaveClip() {
@@ -806,6 +932,14 @@ function triggerSaveClip() {
   // same recording:segment-ready path every other segment uses, so by the
   // time this resolves, buildClipFromRing has everything up to "now" to
   // work with.
+  //
+  // A flush that came back with nothing (flushResult.flushed === false) is
+  // NOT a failed save: the ring is what gets stitched, and it holds every
+  // completed segment regardless of how the newest one went. That
+  // distinction is the whole reason saving twice in a row used to report
+  // "hasn't captured anything yet" while 20+ good seconds sat in the ring
+  // untouched — buildClipFromRing below is now the only thing that decides
+  // whether there's genuinely nothing to save.
   const flushed = new Promise((resolve) => pendingFlushResolvers.push(resolve));
   recordingWindow.webContents.send("recording:save");
   flushed.then(async (flushResult) => {
@@ -840,6 +974,11 @@ function createOverlayWindow() {
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
+    // Belt and braces alongside hasShadow: false — same Windows-11 corner-
+    // rounding mismatch as the splash and main windows, just far less
+    // visible here since the overlay's content is circular, not a
+    // rectangle near the window's own edges.
+    roundedCorners: false,
     show: false,
     // Without this, .show() below also FOCUSES the window (that's the
     // default Electron/OS behavior) — combined with alwaysOnTop's

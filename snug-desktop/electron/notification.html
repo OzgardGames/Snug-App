@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Snug</title>
+<style>
+  /* No color-scheme declaration, same as splash.html and share-picker.html:
+     this window is transparent: true, and color-scheme makes Chromium paint
+     an opaque UA canvas behind the page — a dark rectangle around the card
+     that html/body { background: transparent } can't undo. */
+  :root {
+    --surface: #ffffff;
+    --text: #2a2640;
+    --muted: #8a7c8c;
+    --shadow: rgba(42, 38, 64, 0.26);
+  }
+  :root[data-theme="dark"] {
+    --surface: #1e1c28;
+    --text: #f2f0f5;
+    --muted: #8a8794;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+  :root {
+    /* Brand accents are identical in both themes — same values as
+       snug/src/app/globals.css. */
+    --mint: #38c9a8;
+    --pink: #ff6f91;
+    --on-accent: #17161f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+  }
+  /* The window is deliberately BIGGER than the card, and the card is
+     centered inside it with room to spare. That margin is what the card's
+     shadow fades into — sizing a transparent window exactly to its card is
+     what produced the clipped grey corner ghosts on the splash and the
+     share picker (see those files), because a blurred shadow with nowhere
+     to go gets cut off square by the window edge. Here the shadow actually
+     matters: this thing floats over arbitrary game content and needs to
+     separate from it, so the window pays for the room instead. */
+  .wrap {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 30px 34px;
+  }
+  .card {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px 15px;
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: 0 8px 22px var(--shadow);
+    /* Clips the countdown strip below to the card's own rounded corners
+       instead of letting it run out past them. */
+    overflow: hidden;
+    animation: notifIn 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .card.leaving {
+    animation: notifOut 260ms ease both;
+  }
+  /* Rises into place rather than just fading — at a glance, motion from
+     below reads as "something arrived" faster than an opacity change. */
+  @keyframes notifIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes notifOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(8px); }
+  }
+  .badge {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--mint);
+    color: var(--on-accent);
+  }
+  .badge.fail { background: var(--pink); color: #ffffff; }
+  .copy { min-width: 0; flex: 1; }
+  .title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+  .detail {
+    margin-top: 1px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* A quiet countdown of the time left on screen — the one cue that says
+     this will take itself away, so nothing about it demands a decision.
+     Sits on the card's own bottom edge (inside it, clipped by its radius)
+     rather than floating in the window's transparent padding, where it
+     read as a stray line with no relationship to the card. */
+  .timer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+  }
+  .timer span {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: var(--mint);
+    opacity: 0.55;
+    transform-origin: left center;
+    animation: notifTimer linear both;
+  }
+  .timer span.fail { background: var(--pink); }
+  @keyframes notifTimer {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="badge" id="badge">
+        <!-- The same camera glyph as the room's save button and the
+             overlay's — one icon for instant replay everywhere it appears. -->
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.5" y="5.5" width="13" height="13" rx="2.5" />
+          <path d="m18.5 9 3-2v10l-3-2" />
+        </svg>
+      </div>
+      <div class="copy">
+        <div class="title" id="title"></div>
+        <div class="detail" id="detail"></div>
+      </div>
+      <div class="timer"><span id="timerBar"></span></div>
+    </div>
+  </div>
+<script>
+  // Everything arrives in the URL: this window is created fresh (or
+  // re-pointed at this file) per notification by main.js, so there's no
+  // live channel to wait on and nothing to ask for — the values have to be
+  // here by the time the first frame paints.
+  const params = new URLSearchParams(location.search);
+  if (params.get("theme") === "dark") document.documentElement.dataset.theme = "dark";
+
+  const failed = params.get("kind") === "fail";
+  // textContent, never innerHTML — the detail line can carry an ffmpeg
+  // error string, and none of this is worth an injection surface.
+  document.getElementById("title").textContent = params.get("title") ?? "";
+  document.getElementById("detail").textContent = params.get("detail") ?? "";
+  if (failed) {
+    document.getElementById("badge").classList.add("fail");
+    document.getElementById("timerBar").classList.add("fail");
+  }
+
+  // main.js owns the actual lifetime (it closes the window); this only
+  // matches the on-screen countdown and the exit animation to it, so the
+  // card is already gone visually by the time the window disappears rather
+  // than being cut off mid-frame.
+  const totalMs = Number(params.get("ms")) || 4200;
+  const EXIT_MS = 260;
+  document.getElementById("timerBar").style.animationDuration = `${totalMs}ms`;
+  setTimeout(() => {
+    document.getElementById("card").classList.add("leaving");
+  }, Math.max(0, totalMs - EXIT_MS));
+</script>
+</body>
+</html>

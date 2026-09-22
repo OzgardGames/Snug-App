@@ -284,45 +284,89 @@
     stopCapture();
   });
 
+  // A save flushes whatever segment happens to be running right now, and
+  // that segment can be milliseconds old — a rotation, or a previous save,
+  // may have just started it. A recorder that young has little or nothing
+  // encoded yet, which is the single cause behind two separate symptoms:
+  //
+  //   - Saving twice in a row failed outright with "hasn't captured
+  //     anything yet". The second save flushed a segment that a moment
+  //     earlier had been started by the first, got an empty blob back, and
+  //     reported failure — throwing away the 20+ seconds already sitting in
+  //     main.js's ring, which was never the thing that was missing.
+  //   - The last moment before a save could be missing from the clip. A
+  //     thin trailing segment contributes almost no frames to the concat,
+  //     so the file ends where the PREVIOUS segment did — a second or two
+  //     before the click.
+  //
+  // Letting a young segment reach a usable age before stopping it fixes
+  // both. The cost is a fraction of a second added to the save, which is
+  // invisible: everything being saved is already buffered, and the wait
+  // itself is more footage.
+  const MIN_FLUSH_AGE_MS = 900;
+
+  // A second save arriving mid-flush would stop an already-stopping
+  // recorder (stop() throws once it isn't "recording") and shift main.js's
+  // pending-flush queue twice, leaving every later save resolving against
+  // the wrong request.
+  let flushInProgress = false;
+
   window.recorder.onSave(async () => {
+    // Every branch below still has to report back exactly once: main.js
+    // queues one resolver per save request and shifts one per completion,
+    // so a silent return would desync that queue for good.
+    if (flushInProgress) {
+      window.recorder.flushComplete({ ok: true, flushed: false });
+      return;
+    }
     // Snapshot the current instance by reference — startSegment() below
     // reassigns the module-level mediaRecorder, but `recorder` here keeps
     // pointing at the one we're actually saving regardless.
     const recorder = mediaRecorder;
-    if (!recorder || recorder.state === "inactive") {
-      window.recorder.flushComplete({
-        ok: false,
-        error: "Instant replay hasn't captured anything yet — give it a few seconds.",
-      });
-      return;
-    }
-    // Clearing this BEFORE stop() is what prevents the natural periodic
-    // restart from racing with the one startSegment() below performs —
-    // without it, both could fire within the same tick and hand two
-    // different "current" recorders to two different onstop handlers.
-    if (restartTimer) clearTimeout(restartTimer);
-
-    const finished = await finalizeSegment(recorder);
-
-    // Begin the next segment immediately — minimal capture gap, and
-    // guarantees a second save right after doesn't just re-export the
-    // same footage.
-    startSegment();
-
-    if (!finished) {
-      window.recorder.flushComplete({
-        ok: false,
-        error: "Instant replay hasn't captured anything yet — give it a few seconds.",
-      });
+    if (!recorder || recorder.state !== "recording") {
+      // Nothing to flush — but the ring may still be full, so this is not
+      // a failed save. buildClipFromRing in main.js is the one place that
+      // decides whether there's genuinely nothing to build from.
+      window.recorder.flushComplete({ ok: true, flushed: false });
       return;
     }
 
-    // The actual file (stitched from this segment plus however many
-    // earlier ones cover the requested buffer length) is built in
-    // main.js, which already has finalizeSegment's segmentReady call
-    // above sitting in its ring — this just tells it "the flush you
-    // asked for landed, go build the clip now."
-    window.recorder.flushComplete({ ok: true });
+    flushInProgress = true;
+    try {
+      // Clearing this BEFORE stop() is what prevents the natural periodic
+      // restart from racing with the one startSegment() below performs —
+      // without it, both could fire within the same tick and hand two
+      // different "current" recorders to two different onstop handlers.
+      if (restartTimer) clearTimeout(restartTimer);
+
+      const age = Date.now() - recorder.startMs_;
+      if (age < MIN_FLUSH_AGE_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_FLUSH_AGE_MS - age));
+      }
+      // Capture can be turned off entirely during that wait (stopCapture
+      // stops this very recorder), and stop() on one that isn't recording
+      // throws.
+      if (recorder.state !== "recording") {
+        window.recorder.flushComplete({ ok: true, flushed: false });
+        return;
+      }
+
+      const finished = await finalizeSegment(recorder);
+
+      // Begin the next segment immediately — minimal capture gap, and
+      // guarantees a second save right after doesn't just re-export the
+      // same footage.
+      startSegment();
+
+      // The actual file (stitched from this segment plus however many
+      // earlier ones cover the requested buffer length) is built in
+      // main.js, which already has finalizeSegment's segmentReady call
+      // above sitting in its ring — this just tells it "the flush you
+      // asked for landed, go build the clip now."
+      window.recorder.flushComplete({ ok: true, flushed: !!finished });
+    } finally {
+      flushInProgress = false;
+    }
   });
 </script>
 </body>
