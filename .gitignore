@@ -16,6 +16,11 @@ release/
 .env
 .env.*
 !.env.example
+# electron-builder reads GH_TOKEN from this exact filename in the project
+# directory (see electron-builder/out/cli/cli-util.js). It does NOT match
+# the .env patterns above, so without this line a release token dropped
+# there would be committable — into a public repo.
+electron-builder.env
 
 # Credentials of any kind
 *.pem
