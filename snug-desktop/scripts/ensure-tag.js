@@ -54,7 +54,15 @@ if (!exists) {
   console.log(`[ensure-tag] ${tag} already exists locally`);
 }
 
-// Idempotent: pushing a tag the remote already has is a no-op ("Everything
-// up-to-date"), so a re-run after a failed publish doesn't error here.
-git(["push", "origin", tag], { stdio: "inherit" });
+// Ask the remote before pushing. Pushing a tag origin already has is NOT
+// a no-op — git rejects it outright ("already exists"), which would fail
+// the whole release on exactly the re-run-after-a-failed-publish this
+// script is meant to survive.
+const onRemote = git(["ls-remote", "--tags", "origin", `refs/tags/${tag}`]) !== "";
+if (onRemote) {
+  console.log(`[ensure-tag] ${tag} is already on origin`);
+} else {
+  git(["push", "origin", tag], { stdio: "inherit" });
+  console.log(`[ensure-tag] pushed ${tag} to origin`);
+}
 console.log(`[ensure-tag] ${tag} is on origin — safe to publish a release for it`);
