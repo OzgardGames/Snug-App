@@ -42,6 +42,24 @@ export type SnugDesktopBridge = {
   reportMuteState: (muted: boolean) => void;
   reportDeafenState: (deafened: boolean) => void;
   reportTheme: (theme: "light" | "dark") => void;
+  /** Label (not deviceId — see preload) of the mic to use for instant replay. */
+  reportPreferredMicLabel: (label: string | null) => void;
+  reportRoomPresence: (
+    state: {
+      roomName: string;
+      members: {
+        name: string;
+        talking: boolean;
+        muted: boolean;
+        game: string | null;
+        color: string;
+      }[];
+    } | null,
+  ) => void;
+  /** Foreground app on this machine, or null when it's an everyday one. */
+  onGameChanged: (callback: (game: string | null) => void) => () => void;
+  getOpenAtLogin: () => Promise<boolean>;
+  setOpenAtLogin: (enabled: boolean) => Promise<boolean>;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;

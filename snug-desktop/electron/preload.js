@@ -27,6 +27,25 @@ contextBridge.exposeInMainWorld("snugDesktop", {
   // pages that can't read the web layer's localStorage, so the theme has
   // to be pushed to them through the main process — see setUiTheme.
   reportTheme: (theme) => ipcRenderer.send("snug:report-theme", theme),
+  // Instant replay records in its own file:// window, which gets a
+  // different set of deviceIds than this page does (Chromium scopes and
+  // salts them per origin), so the id of the mic chosen here is meaningless
+  // over there. The LABEL is the one identifier that means the same thing
+  // in both, so that's what crosses — see recording.html's pickMicStream.
+  reportPreferredMicLabel: (label) => ipcRenderer.send("snug:preferred-mic-label", label),
+  // Who's in the room, who's talking, what they're playing — drives the
+  // always-on-top roster overlay. null when you're not in a room, which is
+  // what hides it.
+  reportRoomPresence: (state) => ipcRenderer.send("snug:room-presence", state),
+  onGameChanged: (callback) => {
+    const listener = (_event, game) => callback(game);
+    ipcRenderer.on("snug:game-changed", listener);
+    return () => ipcRenderer.removeListener("snug:game-changed", listener);
+  },
+  // Launch-at-login. On by default (Snug is a leave-it-running voice
+  // client); Settings is where it gets turned off.
+  getOpenAtLogin: () => ipcRenderer.invoke("snug:get-open-at-login"),
+  setOpenAtLogin: (enabled) => ipcRenderer.invoke("snug:set-open-at-login", enabled),
   // Drives the custom window controls (WindowControlsPill.tsx) — there is
   // no native OS window chrome at all (see main.js's frame: false), so
   // every one of these has to be a real round trip to the main process.

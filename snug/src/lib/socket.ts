@@ -24,6 +24,8 @@ export type RoomMember = {
   muted: boolean;
   forceMuted: boolean;
   sharing: boolean;
+  /** Foreground app, reported by the desktop app only. null in a browser. */
+  game?: string | null;
   // A stable stand-in for "this device," unlike `id` (the live socket id,
   // which changes on every reconnect) — see the join-detection diff in
   // room/[code]/page.tsx, which is why this exists at all.

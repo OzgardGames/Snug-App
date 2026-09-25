@@ -14,6 +14,7 @@ const {
 } = require("electron");
 const { spawn, execFile } = require("node:child_process");
 const path = require("node:path");
+const { detectForegroundGame } = require("./gameDetect");
 const http = require("node:http");
 const fs = require("node:fs");
 
@@ -60,8 +61,10 @@ let sharePickerWindow = null;
 let splashWindow = null;
 let recordingWindow = null;
 let notificationWindow = null;
+let rosterOverlayWindow = null;
 let notificationTimer = null;
 let tray = null;
+let lastPreferredMicLabel = null;
 // Reported by the renderer via preload's reportMuteState — reflected in
 // the tray menu label.
 let lastMuteState = false;
@@ -234,7 +237,11 @@ async function createWindow() {
   currentWindowMode = "compact";
 
   win.once("ready-to-show", () => {
-    win.show();
+    // On a Windows-triggered launch the app lives in the tray until asked
+    // for — showing a window someone didn't open is the whole reason people
+    // resent startup apps. Everything else (voice, instant replay, global
+    // shortcuts) is already running by this point regardless.
+    if (!startedByWindows) win.show();
     closeSplashWindow();
   });
 
@@ -262,6 +269,12 @@ async function createWindow() {
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
   });
+  // The roster overlay only exists for when you can't see the room itself,
+  // so every way this window can come and go re-evaluates it. "hide" covers
+  // close-to-tray, which isn't a minimize.
+  for (const event of ["minimize", "restore", "show", "hide"]) {
+    win.on(event, () => refreshRosterVisibility());
+  }
   // Drives the custom title bar's maximize/restore icon — it can't just
   // track its own click, since double-clicking the drag region or an OS
   // snap gesture (Win+Up, drag-to-top) changes the state without going
@@ -323,6 +336,53 @@ function setUiTheme(theme) {
   // time anyone can reach the theme switch.
   overlayWindow?.webContents.send("snug:theme", theme);
   sharePickerWindow?.webContents.send("snug:theme", theme);
+  rosterOverlayWindow?.webContents.send("snug:theme", theme);
+}
+
+// Launch-at-login. Windows is the only platform this ships on, where
+// app.setLoginItemSettings writes the usual Run-key entry.
+//
+// The file records whether this has ever been decided at all, which
+// getLoginItemSettings() cannot: an unregistered app and one the user
+// switched off look identical to it, and only the first should be turned
+// on by default. What's registered stays the source of truth for the
+// current state — see the getter below.
+const STARTUP_FILE = path.join(app.getPath("userData"), "startup.json");
+
+function loadOpenAtLogin() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(STARTUP_FILE, "utf8"));
+    if (typeof saved.openAtLogin === "boolean") return saved.openAtLogin;
+  } catch {
+    // Never set — see applyOpenAtLogin for what a first run does.
+  }
+  return null;
+}
+
+function setOpenAtLogin(enabled) {
+  const next = !!enabled;
+  try {
+    fs.writeFileSync(STARTUP_FILE, JSON.stringify({ openAtLogin: next }));
+  } catch (err) {
+    console.error("[snug-desktop] failed to save startup.json:", err);
+  }
+  // openAsHidden is macOS-only; on Windows the app decides for itself what
+  // to show, and Snug starting straight to the tray is handled by the
+  // --startup argument below rather than by the OS.
+  app.setLoginItemSettings({
+    openAtLogin: next,
+    args: next ? ["--startup"] : [],
+  });
+  return next;
+}
+
+// Snug is a background app for most of its life — a voice client you leave
+// running — so it starts with Windows by default, and says so in Settings.
+// The stored value exists only to tell a genuine first run from someone
+// having turned it off, which the registry alone can't answer: both look
+// like "not registered".
+function applyOpenAtLogin() {
+  if (loadOpenAtLogin() === null) setOpenAtLogin(true);
 }
 
 function createSplashWindow() {
@@ -536,6 +596,10 @@ async function startRecording() {
     segmentSeconds: SEGMENT_SECONDS,
     fps: recordingSettings.fps,
     captureAudio: recordingSettings.captureAudio !== false,
+    // Matched by label, not id: the recording window is a file:// page and
+    // gets its own per-origin deviceIds, so the room's ids mean nothing to
+    // it. null just means "use the default input".
+    micLabel: lastPreferredMicLabel,
     width: preset?.width ?? null,
     height: preset?.height ?? null,
   });
@@ -1008,12 +1072,159 @@ function createOverlayWindow() {
   overlayWindow = win;
 }
 
+// Windows does not treat topmost as permanent. Another app going fullscreen,
+// or simply being activated, can quietly drop this window below it — which
+// is how an always-on-top overlay ends up underneath a folder or a game and
+// stops being an overlay at all. Setting the level once at creation isn't
+// enough; it has to be re-asserted.
+//
+// ponytail: a 2s re-assert while visible. Cheap and it holds. If it ever
+// needs to be exact rather than eventually-right, the upgrade is a
+// SetWinEventHook on foreground changes via a native module.
+let overlayTopmostTimer = null;
+
+function assertOverlayTopmost() {
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return;
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+}
+
 function toggleOverlay() {
   if (!overlayWindow) return;
   // showInactive (not show) as a second line of defense against the
   // overlay stealing focus, alongside focusable: false above.
-  if (overlayWindow.isVisible()) overlayWindow.hide();
-  else overlayWindow.showInactive();
+  if (overlayWindow.isVisible()) {
+    overlayWindow.hide();
+    clearInterval(overlayTopmostTimer);
+    overlayTopmostTimer = null;
+  } else {
+    overlayWindow.showInactive();
+    assertOverlayTopmost();
+    clearInterval(overlayTopmostTimer);
+    overlayTopmostTimer = setInterval(assertOverlayTopmost, 2000);
+  }
+}
+
+// The always-visible roster: who's in the room, who's talking, and what
+// they're playing. Distinct from the control overlay above — that one is a
+// fan of buttons you toggle on when you need it; this is ambient, faded,
+// and never interactive, which is why it's click-through rather than
+// merely non-focusable.
+//
+// Sized for the 10-person ceiling the server enforces: ten rows with room
+// for a game line, so it never needs to scroll or resize while a room fills
+// up. The page centres its list inside this box, so a half-full room sits in
+// the middle of the screen edge rather than at the top of an empty window.
+const ROSTER_WIDTH = 250;
+const ROSTER_HEIGHT = 420;
+
+function createRosterOverlayWindow() {
+  const { x, y, height } = screen.getPrimaryDisplay().workArea;
+  const win = new BrowserWindow({
+    width: ROSTER_WIDTH,
+    height: ROSTER_HEIGHT,
+    // Middle-LEFT: the control overlay owns the top-left corner, and the
+    // screen corners are where games put their own HUD.
+    x,
+    y: y + Math.round((height - ROSTER_HEIGHT) / 2),
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    roundedCorners: false,
+    show: false,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "roster-overlay-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setAlwaysOnTop(true, "screen-saver");
+  // Never takes a click. It has nothing to click, and it sits over a game.
+  win.setIgnoreMouseEvents(true, { forward: true });
+  win.loadFile(path.join(__dirname, "roster-overlay.html"), { search: `theme=${uiTheme}` });
+  win.on("closed", () => {
+    if (rosterOverlayWindow === win) rosterOverlayWindow = null;
+  });
+  rosterOverlayWindow = win;
+}
+
+// Same Windows topmost-demotion problem the control overlay has — see
+// assertOverlayTopmost.
+let rosterTopmostTimer = null;
+
+// Three things have to agree before the roster is on screen: you're in a
+// room (presence is non-null), the main window isn't the thing you're
+// looking at, and you haven't turned it off with the shortcut. Each changes
+// from somewhere different — presence IPC, window events, a global
+// shortcut — so all three are re-checked together rather than tracked.
+let rosterEnabled = true;
+let lastRosterPresence = null;
+
+function refreshRosterVisibility() {
+  // Showing this over the app itself would just be a second, worse copy of
+  // the room you already have open.
+  const appOutOfSight =
+    !mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized() || !mainWindow.isVisible();
+  setRosterOverlayVisible(!!lastRosterPresence && rosterEnabled && appOutOfSight);
+}
+
+function setRosterOverlayVisible(visible) {
+  if (!rosterOverlayWindow || rosterOverlayWindow.isDestroyed()) return;
+  if (visible) {
+    if (!rosterOverlayWindow.isVisible()) {
+      rosterOverlayWindow.showInactive();
+      // It was hidden while presence kept arriving, so hand it the latest
+      // state rather than showing an empty list until the next update.
+      if (lastRosterPresence) {
+        rosterOverlayWindow.webContents.send("roster:presence", lastRosterPresence);
+      }
+    }
+    rosterOverlayWindow.setAlwaysOnTop(true, "screen-saver");
+    if (!rosterTopmostTimer) {
+      rosterTopmostTimer = setInterval(() => {
+        if (rosterOverlayWindow && !rosterOverlayWindow.isDestroyed() && rosterOverlayWindow.isVisible()) {
+          rosterOverlayWindow.setAlwaysOnTop(true, "screen-saver");
+        }
+      }, 2000);
+    }
+  } else {
+    rosterOverlayWindow.hide();
+    clearInterval(rosterTopmostTimer);
+    rosterTopmostTimer = null;
+  }
+}
+
+// What this machine is playing, polled rather than pushed because Windows
+// gives no event for "the foreground app changed" without a native hook.
+// 10s is slow enough to be free and fast enough that nobody notices the
+// lag on a session that lasts hours.
+let lastDetectedGame = null;
+let gamePollTimer = null;
+
+function startGamePolling() {
+  if (gamePollTimer) return;
+  const tick = async () => {
+    const game = await detectForegroundGame();
+    if (game === lastDetectedGame) return;
+    lastDetectedGame = game;
+    mainWindow?.webContents.send("snug:game-changed", game);
+  };
+  void tick();
+  gamePollTimer = setInterval(tick, 10000);
+}
+
+function stopGamePolling() {
+  clearInterval(gamePollTimer);
+  gamePollTimer = null;
+  if (lastDetectedGame !== null) {
+    lastDetectedGame = null;
+    mainWindow?.webContents.send("snug:game-changed", null);
+  }
 }
 
 // Shared by global shortcuts and the overlay's own buttons, so both
@@ -1217,6 +1428,7 @@ const SHORTCUT_ACTIONS = {
   startShare: { channel: "snug:start-share", label: "Start screen share" },
   toggleOverlay: { special: "overlay", label: "Show / hide the overlay" },
   saveReplay: { special: "saveReplay", label: "Save instant replay" },
+  toggleRoster: { special: "roster", label: "Show / hide the room list (while Snug is minimized)" },
 };
 
 const DEFAULT_SHORTCUTS = {
@@ -1225,6 +1437,7 @@ const DEFAULT_SHORTCUTS = {
   startShare: "CommandOrControl+Shift+S",
   toggleOverlay: "CommandOrControl+Shift+O",
   saveReplay: "CommandOrControl+Shift+R",
+  toggleRoster: "CommandOrControl+Shift+L",
 };
 
 const SHORTCUTS_FILE = path.join(app.getPath("userData"), "shortcuts.json");
@@ -1255,6 +1468,11 @@ function shortcutHandler(action) {
   const entry = SHORTCUT_ACTIONS[action];
   if (entry.special === "overlay") return () => toggleOverlay();
   if (entry.special === "saveReplay") return () => triggerSaveClip();
+  if (entry.special === "roster")
+    return () => {
+      rosterEnabled = !rosterEnabled;
+      refreshRosterVisibility();
+    };
   return () => dispatchToApp(entry.channel);
 }
 
@@ -1268,6 +1486,34 @@ function registerGlobalShortcuts() {
     }
   }
 }
+
+// Which microphone instant replay should record, by label — see preload's
+// reportPreferredMicLabel for why it isn't a deviceId. Held in memory only:
+// it's a mirror of whatever the room currently has selected, not a setting,
+// and the room re-reports it on mount.
+// Read from Windows, not from our file: the toggle should show what is
+// actually registered, including when something else changed it.
+ipcMain.handle("snug:get-open-at-login", () => app.getLoginItemSettings().openAtLogin);
+ipcMain.handle("snug:set-open-at-login", (_event, enabled) => setOpenAtLogin(enabled));
+
+// The room renderer is the only thing that knows who's present and who's
+// talking, so presence flows renderer -> main -> overlay. Passing it
+// straight through keeps main free of any room state of its own.
+ipcMain.on("snug:room-presence", (_event, state) => {
+  const inRoom = !!state && Array.isArray(state.members);
+  lastRosterPresence = inRoom ? state : null;
+  refreshRosterVisibility();
+  if (inRoom) {
+    rosterOverlayWindow?.webContents.send("roster:presence", state);
+    startGamePolling();
+  } else {
+    stopGamePolling();
+  }
+});
+
+ipcMain.on("snug:preferred-mic-label", (_event, label) => {
+  lastPreferredMicLabel = typeof label === "string" && label ? label : null;
+});
 
 ipcMain.on("snug:mute-state", (_event, muted) => {
   lastMuteState = !!muted;
@@ -1338,10 +1584,29 @@ ipcMain.on("snug:report-theme", (_event, theme) => setUiTheme(theme));
 // reuses the exact same "close" handler as the native X would have, which
 // already hides-to-tray instead of quitting.
 ipcMain.on("snug:window-minimize", () => mainWindow?.minimize());
+// Sized to the display's WORK AREA by hand rather than calling maximize().
+// On a frameless, transparent window Electron's own maximize doesn't
+// reliably land on the work area — it can cover the taskbar, which is not
+// what maximizing a window means on Windows. workArea is the taskbar-less
+// rectangle by definition, so this fills the screen exactly and stops at
+// the taskbar every time.
+//
+// The window's own maximize/unmaximize listeners still run for anything the
+// OS initiates (Win+Up, snap, double-click), so both routes keep
+// isWindowMaximized and the renderer in step.
+let preMaximizeBounds = null;
+
 ipcMain.on("snug:window-maximize-toggle", () => {
   if (!mainWindow) return;
-  if (isWindowMaximized) mainWindow.unmaximize();
-  else mainWindow.maximize();
+  if (isWindowMaximized) {
+    if (preMaximizeBounds) mainWindow.setBounds(preMaximizeBounds);
+    else mainWindow.unmaximize();
+  } else {
+    preMaximizeBounds = mainWindow.getBounds();
+    mainWindow.setBounds(screen.getDisplayMatching(mainWindow.getBounds()).workArea);
+  }
+  isWindowMaximized = !isWindowMaximized;
+  mainWindow.webContents.send("snug:window-maximized", isWindowMaximized);
 });
 ipcMain.on("snug:window-close", () => mainWindow?.close());
 ipcMain.handle("snug:window-is-maximized", () => isWindowMaximized);
@@ -1610,7 +1875,18 @@ ipcMain.handle("share-picker:get-sources", () =>
 
 ipcMain.on("share-picker:pick", (_event, sourceId) => {
   const source = shareSources.get(sourceId);
-  resolvePendingShare(source ? { video: source } : undefined);
+  // "loopback" is Windows system audio: whatever is coming out of the
+  // speakers goes with the picture, so a shared game is shared with its
+  // sound. Not "loopbackWithMute" — that variant silences local playback
+  // while capturing, which would mean sharing a game and then not being
+  // able to hear it yourself.
+  //
+  // This is the whole system's output mix, not the shared window's, which
+  // is the only thing Electron can capture. It therefore also carries the
+  // room's own voices back out (see the echo note in useVoiceRoom's
+  // displayMediaConstraints). Electron exposes no per-process capture to
+  // narrow it to just the game.
+  resolvePendingShare(source ? { video: source, audio: "loopback" } : undefined);
   closeSharePickerWindow();
 });
 
@@ -1630,6 +1906,11 @@ function setupScreenShareSupport() {
 // while it's already sitting in the tray) would try to bind the same
 // port and re-register the same global shortcuts — both fail the second
 // time round. Instead, a second launch just focuses the existing window.
+// Windows passes this on the login-item command line (see setOpenAtLogin),
+// which is the only way to tell an automatic launch from someone actually
+// opening the app.
+const startedByWindows = process.argv.includes("--startup");
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -1654,13 +1935,20 @@ if (!gotSingleInstanceLock) {
     // Pure scratch space (see SEGMENTS_DIR above) — wiped on every start so
     // a crash mid-session never leaves orphaned segment files behind.
     fs.rmSync(SEGMENTS_DIR, { recursive: true, force: true });
-    createSplashWindow();
+    applyOpenAtLogin();
+    // Started by Windows at login rather than by a person, so it goes
+    // straight to the tray: no window, and no splash either — a splash is a
+    // "your thing is loading" reassurance, and nobody asked for anything
+    // yet. See setOpenAtLogin, which is what puts --startup on the
+    // registered command line.
+    if (!startedByWindows) createSplashWindow();
     startFrontendServer();
     createWindow().catch((err) => {
       console.error("[snug-desktop] createWindow failed:", err);
       closeSplashWindow();
     });
     createOverlayWindow();
+    createRosterOverlayWindow();
     createRecordingWindow().webContents.once("did-finish-load", () => {
       // Only actually arms the capture if the user had it on last session
       // — the window itself always exists (cheap, hidden), but getUserMedia

@@ -36,10 +36,32 @@ type UseVoiceRoomArgs = {
 // skip the native picker itself (no web page is allowed to).
 export type DisplaySurface = "monitor" | "window" | "browser";
 
+// audio: true asks for the SHARED SCREEN's sound — the game, a video,
+// whatever is playing — not the sharer's microphone, which is already going
+// to everyone over their own voice track. On desktop that resolves to
+// Windows loopback (see the share picker's callback in main.js); in a
+// browser it's the "share audio" checkbox in Chrome's own picker, which the
+// person can decline, so an audio track is never guaranteed and everything
+// downstream treats it as optional.
+//
+// KNOWN CONSEQUENCE, worth understanding before "fixing" it: Windows
+// loopback captures the whole output mix, which includes the room's own
+// voices, because Snug is playing them to that same device. So whoever is
+// sharing sends everyone else's voices back to them, a few hundred
+// milliseconds late — audible echo for them, inaudible to the sharer, so
+// it will not show up in solo testing. Headphones don't help: loopback taps
+// the digital render stream, not the air. Echo cancellation doesn't touch
+// it either, since to the receiver it arrives as a separate remote stream
+// rather than as their own speakers bleeding into their mic.
+//
+// The real fix is per-process audio capture (grab only the game), which is
+// what Discord does and what Electron gives no way to reach. Until then the
+// honest mitigation is not sharing system audio when several people are
+// talking.
 function displayMediaConstraints(surface?: DisplaySurface): DisplayMediaStreamOptions {
   return surface
-    ? { video: { displaySurface: surface }, audio: false }
-    : { video: true, audio: false };
+    ? { video: { displaySurface: surface }, audio: true }
+    : { video: true, audio: true };
 }
 
 // Closing the picker without choosing anything is a dismissal, not a failure,
@@ -87,6 +109,11 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
   const outgoingAudioStreamRef = useRef<MediaStream | null>(null);
   const noiseSuppressorRef = useRef<NoiseSuppressionHandle | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  // Stream ids known to be somebody's shared screen rather than their
+  // voice. Needed because a screen share's audio and video arrive as
+  // separate ontrack events in no guaranteed order, so the audio can land
+  // before there's any video to identify the stream by.
+  const screenStreamIdsRef = useRef<Set<string>>(new Set());
   // Fetched once per session (see the mic-acquisition effect below) from
   // the server's "get-ice-servers", which holds the actual TURN
   // credentials — never hardcoded here. Read fresh by createConnection, so
@@ -111,6 +138,62 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
   useEffect(() => {
     noiseSuppressionEnabledRef.current = noiseSuppressionEnabled;
   }, [noiseSuppressionEnabled]);
+
+  // Round-trip time to the peers, straight from WebRTC's own stats rather
+  // than a ping of our own: currentRoundTripTime on the succeeded candidate
+  // pair is the actual media path, which is what "how good is my
+  // connection" means here. The WORST peer is reported, not the average —
+  // one bad link is what you'll actually hear, and averaging hides it.
+  // null while there's nothing connected yet.
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    async function sample() {
+      const peers = [...peersRef.current.values()];
+      if (peers.length === 0) {
+        if (!cancelled) setPingMs(null);
+        return;
+      }
+      let worst: number | null = null;
+      for (const pc of peers) {
+        try {
+          const report = await pc.getStats();
+          report.forEach((stat) => {
+            if (
+              stat.type === "candidate-pair" &&
+              stat.state === "succeeded" &&
+              typeof stat.currentRoundTripTime === "number"
+            ) {
+              const ms = stat.currentRoundTripTime * 1000;
+              if (worst === null || ms > worst) worst = ms;
+            }
+          });
+        } catch {
+          // A connection torn down mid-sample — the next tick covers it.
+        }
+      }
+      if (!cancelled) setPingMs(worst === null ? null : Math.round(worst));
+    }
+    void sample();
+    const id = setInterval(sample, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [active]);
+
+  // Instant replay records in its own hidden window, which has no access to
+  // this page's device list and gets different deviceIds for the same
+  // hardware (Chromium salts them per origin). The label is the one thing
+  // that means the same in both places, so it's what gets reported — see
+  // resolveMicConstraint in recording.html.
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    const label = devices.find((d) => d.deviceId === selectedDeviceId)?.label ?? null;
+    bridge.reportPreferredMicLabel(label);
+  }, [devices, selectedDeviceId]);
 
   // Tears down any RNNoise graph and (if suppress) builds a fresh one for
   // rawTrack, returning whichever track should actually go out over the
@@ -192,8 +275,25 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
         const [stream] = e.streams;
         if (!stream) return;
         if (e.track.kind === "video") {
+          screenStreamIdsRef.current.add(stream.id);
           setRemoteScreenStreams((prev) => new Map(prev).set(peerId, stream));
+          // If this stream's AUDIO arrived first it was taken for their
+          // voice — the video track is what identifies it as a screen, so
+          // undo that here rather than leaving a game's soundtrack driving
+          // their talking indicator.
+          setRemoteStreams((prev) => {
+            if (prev.get(peerId)?.id !== stream.id) return prev;
+            const next = new Map(prev);
+            next.delete(peerId);
+            return next;
+          });
+          if (levelMetersRef.current.get(peerId)) {
+            levelMetersRef.current.get(peerId)?.stop();
+            levelMetersRef.current.delete(peerId);
+            trackTalking(peerId, false);
+          }
           e.track.onended = () => {
+            screenStreamIdsRef.current.delete(stream.id);
             setRemoteScreenStreams((prev) => {
               if (!prev.has(peerId)) return prev;
               const next = new Map(prev);
@@ -201,6 +301,16 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
               return next;
             });
           };
+          return;
+        }
+        // A screen share with sound sends its audio in the SAME stream as
+        // its video, so anything arriving in a stream that carries video
+        // belongs to the shared screen, not to the person. It still reaches
+        // the viewer — the <video> element playing that stream plays its
+        // audio too — it just isn't their voice, and must not replace it or
+        // light up their talking indicator.
+        if (screenStreamIdsRef.current.has(stream.id) || stream.getVideoTracks().length > 0) {
+          screenStreamIdsRef.current.add(stream.id);
           return;
         }
         setRemoteStreams((prev) => new Map(prev).set(peerId, stream));
@@ -290,7 +400,30 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
           noiseSuppressorRef.current = null;
           return;
         }
-        if (outgoingTrack) outgoingAudioStreamRef.current = new MediaStream([outgoingTrack]);
+        if (outgoingTrack) {
+          const outgoingStream = new MediaStream([outgoingTrack]);
+          outgoingAudioStreamRef.current = outgoingStream;
+          // Wire the mic into any connection that already exists. Outgoing
+          // connections wait for micReady, but an INCOMING offer doesn't:
+          // someone already in the room offers the moment you appear in the
+          // member list, which is usually while getUserMedia is still
+          // pending — the permission prompt on a first visit, or just a slow
+          // device. createConnection could only attach what existed at that
+          // moment, so that connection answered with no audio sender at all
+          // and nothing ever added one. That's the "new person joins, can't
+          // be heard until they leave and come back" bug: rejoining worked
+          // only because the permission was already granted the second time,
+          // so the mic won the race. replaceAudioTrack's addTrack fallback
+          // fires onnegotiationneeded, so the SDP is redone properly.
+          peersRef.current.forEach((pc) =>
+            replaceAudioTrack(
+              pc,
+              outgoingTrack,
+              outgoingStream,
+              screenStreamRef.current?.getAudioTracks()[0] ?? null,
+            ),
+          );
+        }
 
         levelMetersRef.current.set(
           "self",
@@ -506,7 +639,17 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
       // with no mic at all (see replaceAudioTrack's own comment) — it
       // never got an audio sender to replaceTrack onto in the first
       // place, so this is what actually wires audio up to them for real.
-      peersRef.current.forEach((pc) => replaceAudioTrack(pc, outgoingTrack, outgoingStream));
+      // The last argument is the shared screen's own audio track, when the
+      // share has one: with it on the wire, "the first audio sender" is no
+      // longer a safe way to say "the mic", so it's excluded by name.
+      peersRef.current.forEach((pc) =>
+        replaceAudioTrack(
+          pc,
+          outgoingTrack,
+          outgoingStream,
+          screenStreamRef.current?.getAudioTracks()[0] ?? null,
+        ),
+      );
       oldStream?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = newStream;
       outgoingTrack.enabled = micShouldBeLiveRef.current;
@@ -660,7 +803,14 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
       if (!rawTrack) return;
 
       const outgoingTrack = await buildOutgoingTrack(rawTrack, enabled);
-      peersRef.current.forEach((pc) => replaceAudioTrack(pc, outgoingTrack));
+      peersRef.current.forEach((pc) =>
+        replaceAudioTrack(
+          pc,
+          outgoingTrack,
+          undefined,
+          screenStreamRef.current?.getAudioTracks()[0] ?? null,
+        ),
+      );
       outgoingTrack.enabled = micShouldBeLiveRef.current;
       outgoingAudioStreamRef.current = new MediaStream([outgoingTrack]);
     },
@@ -677,10 +827,14 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
   const stopSharing = useCallback(() => {
     const stream = screenStreamRef.current;
     if (!stream) return;
-    const track = stream.getVideoTracks()[0];
+    // Every sender for this stream, not just the video one — a share with
+    // sound has an audio sender too, and leaving it behind would keep peers
+    // subscribed to a track that's about to be stopped.
+    const shared = new Set(stream.getTracks());
     peersRef.current.forEach((pc) => {
-      const sender = pc.getSenders().find((s) => s.track === track);
-      if (sender) pc.removeTrack(sender);
+      pc.getSenders().forEach((s) => {
+        if (s.track && shared.has(s.track)) pc.removeTrack(s);
+      });
     });
     stream.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
@@ -738,8 +892,20 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
         return;
       }
       const oldStream = screenStreamRef.current;
+      const oldAudio = oldStream?.getAudioTracks()[0] ?? null;
+      const newAudio = newStream.getAudioTracks()[0] ?? null;
 
-      peersRef.current.forEach((pc) => replaceVideoTrack(pc, newTrack));
+      peersRef.current.forEach((pc) => {
+        replaceVideoTrack(pc, newTrack);
+        // Audio is only seamless when both shares have it. Going from a
+        // silent share to one with sound (or the reverse) changes how many
+        // tracks are on the wire, which needs renegotiation whichever way
+        // it's done — so those cases add or remove rather than replace.
+        const sender = oldAudio ? pc.getSenders().find((s) => s.track === oldAudio) : undefined;
+        if (newAudio && sender) void sender.replaceTrack(newAudio);
+        else if (newAudio) pc.addTrack(newAudio, newStream);
+        else if (sender) pc.removeTrack(sender);
+      });
       oldStream?.getTracks().forEach((t) => t.stop());
 
       newTrack.onended = () => stopSharing();
@@ -806,5 +972,6 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
     stopSharing,
     remoteScreenStreams,
     localScreenStream,
+    pingMs,
   };
 }

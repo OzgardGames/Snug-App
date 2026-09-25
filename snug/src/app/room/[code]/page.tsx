@@ -1,11 +1,13 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { SnugMark } from "@/components/SnugMark";
 import { SharePickerModal } from "@/components/SharePickerModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { UpdateReadyPill } from "@/components/UpdateReadyPill";
+import { ConnectionPing } from "@/components/ConnectionPing";
 import { ToastStack, type ToastItem, type ToastKind } from "@/components/Toast";
 import { useTheme } from "@/lib/theme";
 import { colorForId, initialFor } from "@/lib/participantColor";
@@ -18,6 +20,7 @@ import { useNotificationPrefs, fireNotification, type NotificationPrefs } from "
 import { playSound } from "@/lib/sounds";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
+import { gainedStream, releaseGain } from "@/lib/remoteGain";
 import { dragRegion, noDragRegion } from "@/lib/desktopDrag";
 import { WindowControlsPill } from "@/components/WindowControlsPill";
 import { ResizeHandles } from "@/components/ResizeHandles";
@@ -86,13 +89,39 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   // mic list was the one popover in the app that stayed open until you
   // clicked its trigger again.
   const deviceMenuRef = useRef<HTMLDivElement>(null);
+  // The menu itself lives in a portal on document.body (see below), so it
+  // is NOT inside deviceMenuRef — without checking it separately, clicking
+  // an entry would count as "outside" and close the menu before the click
+  // ever landed on the entry.
+  const deviceMenuPanelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!deviceOpen) return;
     function onPointerDown(e: PointerEvent) {
-      if (!deviceMenuRef.current?.contains(e.target as Node)) setDeviceOpen(false);
+      const target = e.target as Node;
+      if (deviceMenuRef.current?.contains(target)) return;
+      if (deviceMenuPanelRef.current?.contains(target)) return;
+      setDeviceOpen(false);
     }
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [deviceOpen]);
+  // Measured from the trigger so the portalled menu can sit directly above
+  // it. Re-measured on resize/scroll, since a fixed-position element pinned
+  // to a moving trigger otherwise drifts away from it.
+  const [deviceMenuRect, setDeviceMenuRect] = useState<{ left: number; bottom: number } | null>(null);
+  useEffect(() => {
+    if (!deviceOpen) return;
+    const update = () => {
+      const rect = deviceMenuRef.current?.getBoundingClientRect();
+      if (rect) setDeviceMenuRect({ left: rect.left, bottom: window.innerHeight - rect.top + 10 });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
   }, [deviceOpen]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -157,6 +186,16 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     return () => mq.removeEventListener("change", update);
   }, []);
   const [isDesktop, setIsDesktop] = useState(false);
+  // Maximized means edge-to-edge: the inset margin and rounded corners that
+  // make this look like a floating window are exactly what leave gaps and
+  // rounded cuts against the screen edges once it's filling the display.
+  const [windowMaximized, setWindowMaximized] = useState(false);
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    bridge.isWindowMaximized().then(setWindowMaximized).catch(() => {});
+    return bridge.onWindowMaximizedChange(setWindowMaximized);
+  }, []);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   // Every deferred UI action in this screen (toast auto-dismiss, the "Copied"
@@ -189,6 +228,30 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     setRecordingJustChanged(true);
     scheduleTimeout(() => setRecordingJustChanged(false), 280);
   }, [recordingActive, scheduleTimeout]);
+
+  // Broadcast what this machine is playing so everyone in the room sees it,
+  // and mirror the room back out to the always-on-top roster overlay.
+  // Desktop-only on both ends: a browser can't see the foreground app, and
+  // has no overlay to feed.
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    return bridge.onGameChanged((game) => {
+      getSocket().emit("set-game", { game });
+    });
+  }, []);
+
+  // Leaving the room has to take the overlay with it — the effect above
+  // only runs while this screen is mounted, so without this it would stay
+  // on screen over the desktop after navigating away.
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    return () => {
+      bridge.reportRoomPresence(null);
+      getSocket().emit("set-game", { game: null });
+    };
+  }, []);
 
   // Brief mint/pink flash on the save button after a save attempt — same
   // feedback and timing as the overlay's own save-replay button (see
@@ -353,6 +416,29 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   }, [voice.muted, isForceMuted]);
 
   useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    if (status !== "joined") {
+      bridge.reportRoomPresence(null);
+      return;
+    }
+    bridge.reportRoomPresence({
+      roomName: roomName || code,
+      members: members.map((m) => ({
+        name: m.name,
+        talking: voice.talkingIds.has(m.id),
+        muted: !!m.forceMuted || !!localMutes[m.id],
+        game: m.game ?? null,
+        // Sent rather than derived in the overlay so a person's colour is
+        // the same one their tile has here — colorForId hashes the socket
+        // id, which the overlay has no reason to know about.
+        color: colorForId(m.id),
+      })),
+    });
+  }, [status, members, voice.talkingIds, roomName, code, localMutes]);
+
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsDesktop(!!getDesktopBridge()?.isDesktop);
   }, []);
@@ -414,6 +500,15 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
         if (prior?.sharing && !member.sharing) {
           playSound("shareStop");
         }
+      }
+      // Anyone in the previous roster who isn't in this one has left. Keyed
+      // the same way joins are (deviceKey, falling back to id) so a
+      // reconnect — which swaps socket ids — doesn't read as a leave
+      // immediately followed by a join.
+      const nowByKey = new Set(state.members.map(keyFor));
+      for (const prior of prevMembersRef.current) {
+        if (prior.id === selfIdRef.current) continue;
+        if (!nowByKey.has(keyFor(prior))) playSound("leave");
       }
       prevMembersRef.current = state.members;
       setMembers(state.members);
@@ -548,11 +643,30 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
 
   // Per-listener volume/mute — client-side only, and local to this tab: it
   // changes what you hear, never what anyone else hears.
+  // Split at 100%: the element handles anything up to unity (cheap, and
+  // keeps setSinkId working), the gain node handles the rest. Muting still
+  // goes through the element so it's always a hard zero regardless of gain.
   useEffect(() => {
     audioRefs.current.forEach((el, peerId) => {
-      el.volume = deafened || localMutes[peerId] ? 0 : (localVolumes[peerId] ?? 1);
+      const wanted = localVolumes[peerId] ?? 1;
+      const silent = deafened || localMutes[peerId];
+      el.volume = silent ? 0 : Math.min(1, wanted);
+      const stream = voice.remoteStreams.get(peerId);
+      if (stream) gainedStream(peerId, stream, silent ? 1 : Math.max(1, wanted));
     });
-  }, [localVolumes, localMutes, deafened]);
+  }, [localVolumes, localMutes, deafened, voice.remoteStreams]);
+
+  // Releases a peer's gain chain when the peer is actually gone, which the
+  // <audio> ref callback can't do (see its own comment). The last cleanup
+  // covers leaving the room, where every stream disappears at once.
+  const gainPeersRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const peerId of gainPeersRef.current) {
+      if (!voice.remoteStreams.has(peerId)) releaseGain(peerId);
+    }
+    gainPeersRef.current = new Set(voice.remoteStreams.keys());
+  }, [voice.remoteStreams]);
+  useEffect(() => () => gainPeersRef.current.forEach(releaseGain), []);
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -849,7 +963,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   // overflow-hidden there too, on every platform.
   return (
     <main
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:p-6 animate-[cardPopIn_320ms_cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none ${isDesktop ? "m-3 rounded-[32px] bg-snug-bg" : ""}`}
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden p-4 md:p-6 animate-[cardPopIn_320ms_cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none ${isDesktop ? (windowMaximized ? "bg-snug-bg" : "m-3 rounded-[32px] bg-snug-bg") : ""}`}
       style={{ transform: "translateZ(0)", ...(isDesktop ? dragRegion : undefined) }}
     >
       {isDesktop && <ResizeHandles />}
@@ -915,8 +1029,14 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
             </div>
           </div>
         </div>
+        {/* min-w, not a fixed w: 390px is the resting width that balances the
+            title on the left, but anything that grows in here (the save-clip
+            button appearing, the ping sliding its number out) used to have to
+            come out of its neighbours' width instead, which is what squashed
+            the REC pill. Growing leftward is free — the title beside it is
+            min-w-0 and truncates. */}
         <div
-          className="flex flex-shrink-0 items-center justify-end gap-1.5 md:w-[390px] md:gap-2"
+          className="flex flex-shrink-0 items-center justify-end gap-1.5 md:min-w-[390px] md:gap-2"
           style={isDesktop ? noDragRegion : undefined}
         >
           {/* Instant replay otherwise runs with no window and nothing on
@@ -941,7 +1061,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                   ? "Instant replay is recording — click to turn off"
                   : "Turn on instant replay"
               }
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition active:scale-95 disabled:opacity-70 ${
+              className={`flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 transition active:scale-95 disabled:opacity-70 ${
                 recordingJustChanged
                   ? "animate-[recTogglePop_280ms_cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none"
                   : ""
@@ -993,6 +1113,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
               </svg>
             </button>
           )}
+          <ConnectionPing pingMs={voice.pingMs} />
           <div
             className="flex items-center gap-1 rounded-full bg-snug-chip px-2 py-1.5"
             title={`${members.length} of ${MAX_ROOM_MEMBERS} online`}
@@ -1135,10 +1256,18 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           ref={(el) => {
             if (el) {
               audioRefs.current.set(peerId, el);
-              if (el.srcObject !== stream) el.srcObject = stream;
+              const wanted = localVolumes[peerId] ?? 1;
+              const silent = deafened || localMutes[peerId];
+              const played = gainedStream(peerId, stream, silent ? 1 : Math.max(1, wanted));
+              if (el.srcObject !== played) el.srcObject = played;
               applySinkId(el, voice.selectedOutputDeviceId);
-              el.volume = deafened || localMutes[peerId] ? 0 : (localVolumes[peerId] ?? 1);
+              el.volume = silent ? 0 : Math.min(1, wanted);
             } else {
+              // Deliberately does NOT release the gain chain. This ref is an
+              // inline arrow, so React detaches it with null and re-attaches
+              // on EVERY render of this page — releasing here tore down and
+              // rebuilt each peer's AudioContext continuously. The effect
+              // below releases it when the peer actually goes.
               audioRefs.current.delete(peerId);
             }
           }}
@@ -1385,6 +1514,11 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                   role={isYou ? undefined : "button"}
                   aria-haspopup={isYou ? undefined : "menu"}
                   aria-label={isYou ? undefined : `${member.name} — volume and mute options`}
+                  // Left to stretch to the row (the grid default) on purpose:
+                  // nothing below changes height with talking any more, so
+                  // stretching is what keeps every card in a row the same
+                  // size even when one person has a game showing and the
+                  // next doesn't.
                   className="relative flex flex-col items-center gap-2.5 rounded-[26px] px-2.5 pt-5 pb-4 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-snug-focus focus-visible:outline-none"
                   style={{
                     background: cardBg,
@@ -1392,11 +1526,19 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                     ...(isDesktop ? noDragRegion : undefined),
                   }}
                 >
-                  {!isYou && (locallyMuted || localVolume < 1) && (
+                  {/* Any volume that isn't the default gets the badge, boosted
+                      included — "why is this person twice as loud as everyone
+                      else" needs the same visible answer as "why is this
+                      person quiet". */}
+                  {!isYou && (locallyMuted || localVolume !== 1) && (
                     <div
                       className="absolute top-2.5 left-2.5 z-10 flex h-6 w-6 items-center justify-center rounded-full"
                       style={{ background: "rgba(23,22,31,0.35)" }}
-                      title={locallyMuted ? "Muted for you" : "Volume lowered for you"}
+                      title={
+                        locallyMuted
+                          ? "Muted for you"
+                          : `Volume ${Math.round(localVolume * 100)}% for you`
+                      }
                     >
                       <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M11 5 6 9H3v6h3l5 4V5Z" />
@@ -1540,21 +1682,45 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                   >
                     {member.name}
                   </div>
-                  {isYou && (
+                  {member.game && (
                     <div
-                      className="rounded-full px-2.5 py-0.5 font-display text-[10px] font-extrabold tracking-wide"
-                      style={{ background: palette.cardInk, color: cardBg }}
+                      className="w-full truncate text-center text-[10.5px] font-bold opacity-70"
+                      style={{ color: palette.cardInk }}
+                      title={`Playing ${member.game}`}
                     >
-                      YOU
+                      {member.game}
                     </div>
                   )}
-                  {talking && (
-                    <div className="flex h-3.5 items-end gap-0.5">
+                  {/* One fixed-height slot shared by the YOU tag and the
+                      level meter, both absolutely placed inside it. Nothing
+                      in here can change a card's height, which is what used
+                      to happen when the bars appeared: a grid row is as tall
+                      as its tallest card, so one person talking resized
+                      everyone beside them. On your own card the two
+                      cross-fade, so the tag turns into the meter while
+                      you're speaking and back when you stop. */}
+                  <div className="relative flex h-[19px] w-full items-center justify-center">
+                    {isYou && (
+                      <div
+                        className={`absolute rounded-full px-2.5 py-0.5 font-display text-[10px] font-extrabold tracking-wide transition-all duration-200 ease-out motion-reduce:transition-none ${
+                          talking ? "scale-75 opacity-0" : "scale-100 opacity-100"
+                        }`}
+                        style={{ background: palette.cardInk, color: cardBg }}
+                      >
+                        YOU
+                      </div>
+                    )}
+                    <div
+                      className={`absolute flex h-3.5 items-end gap-0.5 transition-all duration-200 ease-out motion-reduce:transition-none ${
+                        talking ? "scale-100 opacity-100" : "scale-75 opacity-0"
+                      }`}
+                      aria-hidden={!talking}
+                    >
                       <span className="wave-bar h-2 [animation-delay:0s]" style={{ background: palette.cardInk }} />
                       <span className="wave-bar h-3.5 [animation-delay:0.15s]" style={{ background: palette.cardInk }} />
                       <span className="wave-bar h-2.5 [animation-delay:0.3s]" style={{ background: palette.cardInk }} />
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
@@ -1664,8 +1830,22 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                   </svg>
                 </button>
 
-                {deviceOpen && (
-                  <div className="animate-[fadeIn_150ms_cubic-bezier(0.16,1,0.3,1)] absolute bottom-[64px] left-0 w-[220px] rounded-[18px] bg-snug-chip p-1.5 shadow-snug-popover motion-reduce:animate-none">
+                {/* Portalled onto document.body, not positioned inside the
+                    bar. The bar's own wrapper is overflow-x-auto (see its
+                    comment above), and a scroll container clips absolutely
+                    positioned descendants on BOTH axes — CSS forces the
+                    other axis to auto when one is non-visible — so a menu
+                    opening upward out of the bar was being cut off by it.
+                    Same fix, same reason, as the device pickers in
+                    SettingsModal. */}
+                {deviceOpen &&
+                  deviceMenuRect &&
+                  createPortal(
+                  <div
+                    ref={deviceMenuPanelRef}
+                    className="animate-[fadeIn_150ms_cubic-bezier(0.16,1,0.3,1)] fixed z-[200] w-[220px] rounded-[18px] bg-snug-chip p-1.5 shadow-snug-popover motion-reduce:animate-none"
+                    style={{ left: deviceMenuRect.left, bottom: deviceMenuRect.bottom }}
+                  >
                     {voice.devices.length === 0 && (
                       <div className="px-2.5 py-2 text-sm text-snug-muted">No microphones found</div>
                     )}
@@ -1696,7 +1876,8 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                         </button>
                       );
                     })}
-                  </div>
+                  </div>,
+                  document.body,
                 )}
               </div>
 

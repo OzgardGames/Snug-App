@@ -291,6 +291,10 @@ io.on("connection", (socket) => {
       muted: false,
       forceMuted: false,
       sharing: false,
+      // What this person is playing right now, reported by the desktop app
+      // (null in a browser, which has no way to see it). Presence only —
+      // never persisted, and cleared with the socket.
+      game: null,
       deviceKey: deviceKeyFor(token),
     });
     if (token) room.deviceSockets.set(token, socket.id);
@@ -377,6 +381,7 @@ io.on("connection", (socket) => {
       muted: existing?.muted ?? false,
       forceMuted: existing?.forceMuted ?? false,
       sharing: existing?.sharing ?? false,
+      game: existing?.game ?? null,
       deviceKey: deviceKeyFor(token),
     });
     socket.join(room.code);
@@ -445,6 +450,20 @@ io.on("connection", (socket) => {
     const member = room?.members.get(socket.id);
     if (!room || !member) return;
     member.muted = !!muted;
+    broadcastRoom(io, room);
+  });
+
+  // Capped and trimmed here rather than trusted: this string is broadcast
+  // to everyone in the room and rendered, so its size is the server's
+  // problem, not the sender's.
+  socket.on("set-game", ({ game } = {}) => {
+    const room = currentRoom();
+    const member = room?.members.get(socket.id);
+    if (!room || !member) return;
+    const trimmed = typeof game === "string" ? game.trim().slice(0, 60) : "";
+    const next = trimmed || null;
+    if (member.game === next) return; // nothing changed — don't wake the whole room
+    member.game = next;
     broadcastRoom(io, room);
   });
 

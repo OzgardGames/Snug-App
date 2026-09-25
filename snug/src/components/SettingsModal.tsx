@@ -11,6 +11,7 @@ import { getDesktopBridge } from "@/lib/desktopBridge";
 import { ShortcutSettings } from "@/components/ShortcutSettings";
 import { RecordingSettings } from "@/components/RecordingSettings";
 import { UpdateSettings } from "@/components/UpdateSettings";
+import { StartupSettings } from "@/components/StartupSettings";
 import {
   getPreferredMic,
   setPreferredMic,
@@ -62,6 +63,7 @@ type SettingsCategoryId =
   | "notifications"
   | "recording"
   | "shortcuts"
+  | "startup"
   | "about";
 
 const outputSupported =
@@ -120,6 +122,15 @@ function KeyboardIcon() {
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="6" width="20" height="12" rx="2.5" />
       <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" />
+    </svg>
+  );
+}
+
+function PowerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v9" />
+      <path d="M6.6 6.6a8 8 0 1 0 10.8 0" />
     </svg>
   );
 }
@@ -405,6 +416,12 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
             label: "Shortcuts",
             description: "Global keyboard shortcuts",
             icon: <KeyboardIcon />,
+          },
+          {
+            id: "startup",
+            label: "Startup",
+            description: "Start Snug with Windows",
+            icon: <PowerIcon />,
           },
           {
             id: "about",
@@ -704,6 +721,7 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
     notifications: notificationsContent,
     recording: <RecordingSettings showHeading={false} />,
     shortcuts: <ShortcutSettings showHeading={false} />,
+    startup: <StartupSettings showHeading={false} />,
     about: <UpdateSettings showHeading={false} />,
   };
 
@@ -773,11 +791,17 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
         // vs all of Instant Replay's controls), and a panel that resized on
         // every drill-in would move the header, the Done button and the
         // backdrop edges out from under wherever you were already looking.
-        // Sized to fit the menu comfortably; anything taller scrolls inside
+        // Sized to roughly what the home screen's settings get (the card
+        // there is as tall as the join form), so a category fits without
+        // scrolling in the room too; anything taller still scrolls inside
         // the body below, which it already did. min() keeps it from
         // outgrowing a short window — the one case where a smaller panel
-        // beats a consistent one.
-        className="flex h-[min(560px,85vh)] w-full max-w-sm flex-col rounded-3xl bg-snug-surface p-0 shadow-snug-popover"
+        // beats a consistent one. Shorter in a browser, which only has
+        // three of the categories (the rest are desktop-only) and would
+        // otherwise be mostly empty panel.
+        className={`flex w-full max-w-sm flex-col rounded-3xl bg-snug-surface p-0 shadow-snug-popover ${
+          isDesktop ? "h-[min(680px,86vh)]" : "h-[min(540px,85vh)]"
+        }`}
         style={{
           animation: `${closing ? "modalPopOut" : "modalPopIn"} 200ms cubic-bezier(0.34,1.56,0.64,1) both`,
         }}

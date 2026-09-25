@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Snug</title>
+<style>
+  /* No color-scheme declaration — this window is transparent: true, and
+     color-scheme makes Chromium paint an opaque UA canvas behind the page.
+     Same reason as splash.html and notification.html. */
+  :root {
+    --pill: rgba(255, 255, 255, 0.78);
+    --text: #2a2640;
+    --muted: #8a7c8c;
+  }
+  :root[data-theme="dark"] {
+    --pill: rgba(24, 22, 32, 0.74);
+    --text: #f2f0f5;
+    --muted: #9b96a6;
+  }
+  :root {
+    --mint: #38c9a8;
+    --ink: #17161f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+  }
+  /* Vertically centred in its own window so the list grows up and down from
+     the middle of the screen edge instead of hanging off the top. */
+  #rows {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 5px;
+    height: 100%;
+    padding: 0 10px;
+  }
+  /* Only the name carries a background — the avatar sits on the wallpaper
+     (or the game) the same way it does on a tile, and the whole row is
+     faded until its owner says something. */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    opacity: 0.55;
+    transition: opacity 180ms ease;
+  }
+  .row.talking { opacity: 1; }
+  .avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  /* Same mint ring the main room's avatars pulse with, drawn as a spreading
+     box-shadow so it never changes the row's layout while it animates. */
+  @keyframes talkRing {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(56, 201, 168, 0.95); }
+    50% { box-shadow: 0 0 0 5px rgba(56, 201, 168, 0.3); }
+  }
+  .row.talking .avatar {
+    animation: talkRing 1.4s infinite;
+  }
+  .row.muted .avatar { opacity: 0.5; }
+  .label {
+    background: var(--pill);
+    border-radius: 999px;
+    padding: 3px 10px;
+    max-width: 200px;
+  }
+  .name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 180ms ease;
+  }
+  .row.talking .name { color: var(--text); font-weight: 800; }
+  /* What they're playing, when the desktop app could tell. */
+  .game {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row.talking .avatar {
+      animation: none;
+      box-shadow: 0 0 0 3px rgba(56, 201, 168, 0.6);
+    }
+  }
+</style>
+</head>
+<body>
+  <div id="rows"></div>
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get("theme") === "dark") document.documentElement.dataset.theme = "dark";
+  window.rosterOverlay.onTheme((theme) => {
+    document.documentElement.dataset.theme = theme === "dark" ? "dark" : "";
+  });
+
+  const rowsEl = document.getElementById("rows");
+
+  // Rebuilt wholesale on each update rather than diffed: a room is capped
+  // at 10 people (MAX_ROOM_MEMBERS), so this is at most ten rows a few
+  // times a second — a diff would be more code to maintain than the
+  // rebuild costs to run. The one thing a rebuild WOULD break is the
+  // talking animation (it restarts from frame zero), so rows that are
+  // already talking are reused as-is; see below.
+  const liveRows = new Map();
+
+  window.rosterOverlay.onPresence((state) => {
+    const members = state.members || [];
+    const next = [];
+    const seen = new Set();
+
+    for (const member of members) {
+      seen.add(member.name);
+      let row = liveRows.get(member.name);
+      if (!row) {
+        row = document.createElement("div");
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        const label = document.createElement("div");
+        label.className = "label";
+        const name = document.createElement("div");
+        name.className = "name";
+        const game = document.createElement("div");
+        game.className = "game";
+        label.append(name, game);
+        row.append(avatar, label);
+        row._parts = { avatar, name, game };
+        liveRows.set(member.name, row);
+      }
+
+      const { avatar, name, game } = row._parts;
+      row.className =
+        "row" + (member.talking ? " talking" : "") + (member.muted ? " muted" : "");
+      avatar.textContent = (member.name || "?").trim().slice(0, 1).toUpperCase() || "?";
+      avatar.style.background = member.color || "#B69CE8";
+      name.textContent = member.name;
+      game.textContent = member.game || "";
+      game.style.display = member.game ? "" : "none";
+      next.push(row);
+    }
+
+    for (const key of liveRows.keys()) if (!seen.has(key)) liveRows.delete(key);
+
+    // Re-inserting a node restarts its CSS animations even when it lands in
+    // the same place, so the list is only touched when the membership or
+    // order actually changed — otherwise a presence update several times a
+    // second would reset every talking ring it passes through.
+    const same =
+      rowsEl.children.length === next.length &&
+      next.every((row, i) => rowsEl.children[i] === row);
+    if (!same) rowsEl.replaceChildren(...next);
+  });
+</script>
+</body>
+</html>

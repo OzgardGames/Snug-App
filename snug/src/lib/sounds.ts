@@ -11,6 +11,7 @@ export type SoundName =
   | "messageSent"
   | "messageReceived"
   | "join"
+  | "leave"
   | "shareStart"
   | "shareStop"
   | "roomJoined"
@@ -93,6 +94,14 @@ const SEQUENCES: Record<SoundName, (c: AudioContext) => void> = {
   join: (c) => {
     playChime(c, NOTE.E5, 0, 0.4, 0.035);
     playChime(c, NOTE.B5, 0.1, 0.45, 0.032);
+  },
+  // The same two notes as join, falling instead of rising — the departure
+  // reads as the answer to the arrival without being a second new sound to
+  // learn, and stays quieter, since someone leaving is less worth looking up
+  // for than someone arriving.
+  leave: (c) => {
+    playChime(c, NOTE.B5, 0, 0.38, 0.026);
+    playChime(c, NOTE.E5, 0.1, 0.42, 0.024);
   },
   // A touch fuller for your own arrival, still just three quiet notes.
   roomJoined: (c) => {

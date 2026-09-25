@@ -1,6 +1,6 @@
 {
   "name": "snug-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Snug desktop app",
   "main": "electron/main.js",
   "scripts": {

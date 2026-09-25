@@ -2,8 +2,13 @@
 // interval and reports whether it's currently above a talking threshold,
 // with a short hold time so brief dips between words don't flicker the UI.
 const SAMPLE_MS = 100;
-const HOLD_MS = 300;
-const THRESHOLD = 10; // average deviation from silence (0-128 scale)
+// Long enough to cover the gaps *inside* normal speech — pauses between
+// words and sentences run well past 300ms, which is what made the ring and
+// the roster highlight blink out mid-sentence and restart their animation.
+// The cost of being generous is the highlight lingering under a second
+// after someone actually stops, which nobody reads as wrong.
+const HOLD_MS = 900;
+const THRESHOLD = 8; // average deviation from silence (0-128 scale)
 
 export type LevelMeter = {
   stop: () => void;

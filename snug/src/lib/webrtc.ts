@@ -22,8 +22,20 @@ export function attachLocalTracks(pc: RTCPeerConnection, stream: MediaStream) {
 // nothing in that case means the LOCAL UI can recover (mic picked back
 // up, error cleared) while the remote side never actually starts hearing
 // anything — addTrack is what actually wires it up for real.
-export function replaceAudioTrack(pc: RTCPeerConnection, track: MediaStreamTrack, stream?: MediaStream) {
-  const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+//
+// `exclude` exists because a screen share with sound adds a SECOND audio
+// sender. "The first audio sender" stops being a safe way to mean "the
+// mic" the moment that exists, and picking the wrong one would swap the
+// shared screen's sound for the microphone — so the caller passes the
+// screen's audio track and it's skipped explicitly rather than relying on
+// sender ordering.
+export function replaceAudioTrack(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack,
+  stream?: MediaStream,
+  exclude?: MediaStreamTrack | null,
+) {
+  const sender = pc.getSenders().find((s) => s.track?.kind === "audio" && s.track !== exclude);
   if (sender) return sender.replaceTrack(track);
   if (stream) pc.addTrack(track, stream);
 }

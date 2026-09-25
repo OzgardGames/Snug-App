@@ -189,15 +189,16 @@ export function RecordingSettings({ showHeading = true }: { showHeading?: boolea
 
             <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
               <div className="min-w-0 pr-3">
-                <div className="text-[13.5px] font-bold text-snug-text">Record system audio</div>
+                <div className="text-[13.5px] font-bold text-snug-text">Record audio</div>
                 <div className="text-[11px] font-bold text-snug-muted">
-                  Game sound and anyone you can hear in the room. Your own mic isn&apos;t included.
+                  Game sound, anyone you can hear in the room, and your own microphone,
+                  mixed into one track.
                 </div>
               </div>
               <Toggle
                 checked={settings.captureAudio}
                 onChange={() => update({ captureAudio: !settings.captureAudio })}
-                label="Record system audio"
+                label="Record audio"
               />
             </div>
 

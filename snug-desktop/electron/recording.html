@@ -19,6 +19,10 @@
 
   let mediaStream = null;
   let mediaRecorder = null;
+  // Kept separate from mediaStream so they can be released independently —
+  // see stopCapture.
+  let micStream = null;
+  let mixContext = null;
   let restartTimer = null;
   let currentSegmentSeconds = 3;
   let currentFps = 60;
@@ -223,6 +227,80 @@
     mediaRecorder = null;
     if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
     mediaStream = null;
+    // The mic is a SEPARATE stream from the captured screen, so stopping
+    // mediaStream above doesn't release it. Leaving it open would keep
+    // Windows' "app is using your microphone" indicator lit after instant
+    // replay was turned off, which is both alarming and untrue.
+    if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+    if (mixContext) {
+      mixContext.close().catch(() => {});
+      mixContext = null;
+    }
+  }
+
+  // Finds the mic by LABEL rather than deviceId — this page is a file://
+  // window and Chromium salts deviceIds per origin, so the id the room
+  // picked means nothing here (see preload's reportPreferredMicLabel).
+  // Falls back to the default input when there's no label or no match,
+  // which is also the right answer when the room never picked one.
+  async function resolveMicConstraint(micLabel) {
+    if (!micLabel) return true;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const match = devices.find((d) => d.kind === "audioinput" && d.label === micLabel);
+      if (match) return { deviceId: { exact: match.deviceId } };
+    } catch {
+      // enumerateDevices can reject before any permission has been granted;
+      // the default device is a perfectly good answer in that case.
+    }
+    return true;
+  }
+
+  // Mixes the microphone into the captured system audio so a saved clip has
+  // the whole conversation, not just everyone except the person who saved
+  // it. Both have to become ONE track: MediaRecorder records only the first
+  // audio track of a stream, so simply adding a second one would silently
+  // drop it.
+  //
+  // Nothing here is allowed to take the recording down with it — no mic, no
+  // permission, no Web Audio — because system audio alone is still a useful
+  // clip and a silent failure to record at all is not.
+  async function addMicrophone(micLabel) {
+    try {
+      const audioConstraint = await resolveMicConstraint(micLabel);
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: false });
+      const micTrack = micStream.getAudioTracks()[0];
+      if (!micTrack) return;
+
+      const systemTrack = mediaStream.getAudioTracks()[0] ?? null;
+      const videoTrack = mediaStream.getVideoTracks()[0];
+
+      mixContext = new AudioContext();
+      const destination = mixContext.createMediaStreamDestination();
+
+      // Summing two sources that are each already near full scale clips, and
+      // clipped game audio sounds far worse than slightly quieter game
+      // audio. The system side gives up a little headroom so the voice has
+      // somewhere to sit; the mic stays at unity so it's never the thing
+      // that's hard to hear.
+      if (systemTrack) {
+        const systemGain = mixContext.createGain();
+        systemGain.gain.value = 0.85;
+        mixContext.createMediaStreamSource(new MediaStream([systemTrack])).connect(systemGain);
+        systemGain.connect(destination);
+      }
+      mixContext.createMediaStreamSource(new MediaStream([micTrack])).connect(destination);
+
+      const mixedTrack = destination.stream.getAudioTracks()[0];
+      if (!mixedTrack) return;
+      // Rebuild the capture stream around the mixed track. The original
+      // system track stays alive and feeding the graph — only its place in
+      // the recorded stream is taken.
+      mediaStream = new MediaStream(videoTrack ? [videoTrack, mixedTrack] : [mixedTrack]);
+    } catch (err) {
+      console.warn("[snug instant-replay] no microphone in the mix, recording system audio only", err);
+    }
   }
 
   window.recorder.onStart(async (config) => {
@@ -249,9 +327,10 @@
       }
       // Desktop loopback ("System Audio") — game sound plus anyone you can
       // hear in the room, since their voices are already playing out of
-      // your speakers. Your OWN mic isn't in here: it never reaches the
-      // loopback device, and mixing it in would need a whole Web Audio
-      // graph on top.
+      // your speakers. Your OWN mic is NOT in that: it never reaches the
+      // loopback device, so it's captured separately and mixed in below.
+      // Without it a funny moment plays back with everyone's reaction
+      // except yours, which is exactly the context a clip is saved for.
       //
       // Requested as a SEPARATE attempt rather than as part of one call,
       // because a machine with no loopback device fails the whole
@@ -274,6 +353,7 @@
           video: { mandatory },
         });
       }
+      if (config.captureAudio) await addMicrophone(config.micLabel);
       startSegment();
     } catch (err) {
       console.error("[snug instant-replay] failed to start capture", err);
