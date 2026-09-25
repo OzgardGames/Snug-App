@@ -17,12 +17,45 @@
 // Tagging here rather than by hand keeps the tag and the version in
 // package.json from drifting apart, since both come from the same field.
 const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const projectDir = path.join(__dirname, "..");
 const repoRoot = path.join(projectDir, "..");
 const { version } = require(path.join(projectDir, "package.json"));
 const tag = `v${version}`;
+
+// electron-builder only discovers a missing GH_TOKEN when it reaches the
+// publish step, which is after a four-minute, 160MB build. This is the same
+// check, one second in. It reads electron-builder.env directly because
+// that file is loaded by electron-builder later in the run, so the token
+// isn't in process.env yet.
+const TOKEN_FILE = path.join(projectDir, "electron-builder.env");
+
+function releaseToken() {
+  if (process.env.GH_TOKEN) return process.env.GH_TOKEN.trim();
+  try {
+    const line = fs
+      .readFileSync(TOKEN_FILE, "utf8")
+      .split(/\r?\n/)
+      .find((l) => l.trim().startsWith("GH_TOKEN="));
+    return line ? line.trim().slice("GH_TOKEN=".length).trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+if (!releaseToken()) {
+  console.error(
+    `[ensure-tag] No GitHub token, so publishing would fail at the very end.\n` +
+      `Open this file and put the token after GH_TOKEN= :\n\n  ${TOKEN_FILE}\n\n` +
+      `It needs write access to the repo (a fine-grained token with\n` +
+      `"Contents: Read and write", or a classic token with the "repo" scope).\n` +
+      `The file is gitignored. Nothing else needs changing — re-run the same\n` +
+      `release command afterwards.`,
+  );
+  process.exit(1);
+}
 
 function git(args, opts = {}) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", ...opts }).trim();
