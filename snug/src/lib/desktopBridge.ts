@@ -28,6 +28,15 @@ export type RecordingSettings = {
 };
 export type RecordingUsage = { count: number; bytes: number; capGb: number };
 
+/** A clip saved during this run of the app — see main.js's sessionClips. */
+export type SessionClip = {
+  file: string;
+  name: string;
+  bytes: number;
+  seconds: number;
+  savedAt: number;
+};
+
 export type UpdateState = "idle" | "checking" | "downloading" | "ready" | "none" | "error" | "dev";
 export type UpdateStatus = { state: UpdateState; version: string | null; percent: number };
 export type RecordingSaveResult =
@@ -58,6 +67,12 @@ export type SnugDesktopBridge = {
   ) => void;
   /** Foreground app on this machine, or null when it's an everyday one. */
   onGameChanged: (callback: (game: string | null) => void) => () => void;
+  listSessionClips: () => Promise<SessionClip[]>;
+  deleteClip: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  playClip: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Raw bytes, so a clip can go through the same upload path as any file. */
+  readClip: (file: string) => Promise<Uint8Array | null>;
+  notify: (payload: { title: string; detail?: string; kind?: "ok" | "fail" | "info" }) => void;
   getOpenAtLogin: () => Promise<boolean>;
   setOpenAtLogin: (enabled: boolean) => Promise<boolean>;
   minimizeWindow: () => void;

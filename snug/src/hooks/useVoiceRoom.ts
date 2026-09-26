@@ -17,6 +17,8 @@ import {
   getNoiseSuppressionEnabled,
   setNoiseSuppressionEnabled as persistNoiseSuppressionEnabled,
   getShareSystemAudio,
+  getPushToTalkKey,
+  setPushToTalkKey as persistPushToTalkKey,
 } from "@/lib/audioPrefs";
 import {
   applyNoiseSuppression,
@@ -603,10 +605,21 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
     track.enabled = micShouldBeLiveRef.current;
   }, [muted, forceMuted, pushToTalkMode, spaceHeld, micReady]);
 
-  // ---- push-to-talk key binding (Space, ignored while typing) ----
+  // ---- push-to-talk key binding (Space by default, ignored while typing)
   // spaceHeld is ignored by the mute effect above whenever pushToTalkMode
   // is off (short-circuited by !pushToTalkMode), so it doesn't need to be
   // reset here.
+  const [pushToTalkKey, setPushToTalkKeyState] = useState("Space");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPushToTalkKeyState(getPushToTalkKey());
+  }, []);
+
+  const selectPushToTalkKey = useCallback((code: string) => {
+    persistPushToTalkKey(code);
+    setPushToTalkKeyState(code);
+  }, []);
+
   useEffect(() => {
     if (!pushToTalkMode) return;
     function isTypingTarget(target: EventTarget | null) {
@@ -615,20 +628,31 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
       return tag === "INPUT" || tag === "TEXTAREA" || !!el?.isContentEditable;
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.code !== "Space" || isTypingTarget(e.target)) return;
+      if (e.code !== pushToTalkKey || isTypingTarget(e.target)) return;
+      // Space scrolls and Tab moves focus; a key being held to talk should
+      // do neither. Only swallowed while push-to-talk is actually on and
+      // you're not typing, both checked above.
       e.preventDefault();
       setSpaceHeld(true);
     }
     function onKeyUp(e: KeyboardEvent) {
-      if (e.code === "Space") setSpaceHeld(false);
+      if (e.code === pushToTalkKey) setSpaceHeld(false);
+    }
+    // A key can be let go while another window has focus (alt-tabbing mid
+    // sentence), and the keyup then never arrives here — which would leave
+    // the mic open. Losing focus ends the transmission.
+    function onBlur() {
+      setSpaceHeld(false);
     }
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
-  }, [pushToTalkMode]);
+  }, [pushToTalkMode, pushToTalkKey]);
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
 
@@ -986,5 +1010,7 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
     remoteScreenStreams,
     localScreenStream,
     pingMs,
+    pushToTalkKey,
+    selectPushToTalkKey,
   };
 }

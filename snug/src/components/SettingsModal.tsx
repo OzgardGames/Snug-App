@@ -10,7 +10,11 @@ import { useSoundEffectsPref, playSound } from "@/lib/sounds";
 import { getDesktopBridge } from "@/lib/desktopBridge";
 import { ShortcutSettings } from "@/components/ShortcutSettings";
 import { RecordingSettings } from "@/components/RecordingSettings";
-import { getShareSystemAudio, setShareSystemAudio } from "@/lib/audioPrefs";
+import {
+  getShareSystemAudio,
+  setShareSystemAudio,
+  pushToTalkKeyLabel,
+} from "@/lib/audioPrefs";
 import { UpdateSettings } from "@/components/UpdateSettings";
 import { StartupSettings } from "@/components/StartupSettings";
 import {
@@ -30,6 +34,9 @@ type AudioSettings = {
   onSelectOutputDevice: (deviceId: string) => void;
   pushToTalkMode: boolean;
   onTogglePushToTalk: () => void;
+  /** KeyboardEvent.code of the key held to talk. */
+  pushToTalkKey: string;
+  onPickPushToTalkKey: (code: string) => void;
   noiseSuppressionEnabled: boolean;
   onToggleNoiseSuppression: () => void;
   noiseSuppressionSupported: boolean;
@@ -274,7 +281,7 @@ function DeviceRow({
 }
 
 const NOTIFICATION_ROWS: { key: keyof NotificationPrefs; label: string }[] = [
-  { key: "join", label: "Someone joins the room" },
+  { key: "join", label: "Someone joins or leaves the room" },
   { key: "share", label: "Someone starts sharing their screen" },
   { key: "message", label: "New chat message" },
 ];
@@ -300,6 +307,20 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
   }, []);
 
   const [inputOpen, setInputOpen] = useState(false);
+  // "Press a key…" mode for the push-to-talk binding. The next key down
+  // anywhere becomes the binding; Escape backs out without changing it.
+  const [capturingKey, setCapturingKey] = useState(false);
+  useEffect(() => {
+    if (!capturingKey || !audio) return;
+    function onKeyDown(e: KeyboardEvent) {
+      e.preventDefault();
+      setCapturingKey(false);
+      if (e.code === "Escape") return;
+      audio?.onPickPushToTalkKey(e.code);
+    }
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [capturingKey, audio]);
   const [outputOpen, setOutputOpen] = useState(false);
   // null = showing the category menu. Reset for free every time this whole
   // component remounts (both call sites conditionally render it — see
@@ -544,15 +565,33 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
           <div>
             <div className="text-[13.5px] font-bold text-snug-text">Push to talk</div>
             <div className="text-[11px] font-bold text-snug-muted">
-              Hold Space to talk while muted
+              Hold {pushToTalkKeyLabel(audio.pushToTalkKey)} to talk while muted
             </div>
           </div>
         </div>
-        <Toggle
-          checked={audio.pushToTalkMode}
-          onChange={audio.onTogglePushToTalk}
-          label="Push to talk"
-        />
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {/* Only offered while push-to-talk is on — a key to hold is a
+              detail of a mode you aren't in otherwise. */}
+          {audio.pushToTalkMode && (
+            <button
+              type="button"
+              onClick={() => setCapturingKey((c) => !c)}
+              className="rounded-lg px-2.5 py-1.5 text-[11px] font-extrabold transition active:scale-95"
+              style={{
+                background: capturingKey ? "var(--snug-mint)" : "var(--snug-surface)",
+                color: capturingKey ? "var(--snug-on-accent)" : "var(--snug-text)",
+              }}
+              title="Choose which key to hold"
+            >
+              {capturingKey ? "Press a key…" : pushToTalkKeyLabel(audio.pushToTalkKey)}
+            </button>
+          )}
+          <Toggle
+            checked={audio.pushToTalkMode}
+            onChange={audio.onTogglePushToTalk}
+            label="Push to talk"
+          />
+        </div>
       </div>
 
       {audio.noiseSuppressionSupported ? (
@@ -588,8 +627,13 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
       )}
 
       <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
-        <div className="flex items-center gap-2.5">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-snug-text">
+        {/* items-start, not items-center: this row's description runs to
+            three lines and centring left the icon floating in the middle of
+            it. flex-shrink-0 on the icon because a flex item shrinks before
+            it wraps text — without it the monitor was squashed to a sliver
+            to make room for those lines. */}
+        <div className="flex items-start gap-2.5">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0 text-snug-text">
             <rect x="3" y="4" width="18" height="13" rx="2" />
             <path d="M8 21h8" />
             <path d="M12 17v4" />
@@ -597,9 +641,9 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
           <div className="min-w-0 pr-3">
             <div className="text-[13.5px] font-bold text-snug-text">Share sound with your screen</div>
             <div className="text-[11px] font-bold text-snug-muted">
-              Sends what your speakers are playing. That mix includes Snug
-              itself, so the room hears its own voices come back — turn this
-              off if anyone complains of an echo while you share.
+              Sends what your speakers are playing — Snug included, so the
+              room can hear its own voices echo back. Turn it off if anyone
+              mentions that.
             </div>
           </div>
         </div>
@@ -729,6 +773,11 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
       <div className="mt-3 mb-1 px-1 text-[11px] font-bold text-snug-muted">
         Tell me when&hellip;
       </div>
+      <p className="mb-1 px-1 text-[11px] font-semibold text-snug-muted opacity-80">
+        {isDesktop
+          ? "Shown as a small Snug card in the corner, only while Snug isn't the window you're in."
+          : "Shown as a browser notification, only while this tab isn't the one you're looking at."}
+      </p>
       <div className="flex flex-col gap-0.5">
         {NOTIFICATION_ROWS.map((row) => (
           <div key={row.key} className="flex items-center justify-between py-2.5">

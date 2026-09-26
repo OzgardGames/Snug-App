@@ -8,6 +8,7 @@ import { SharePickerModal } from "@/components/SharePickerModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { UpdateReadyPill } from "@/components/UpdateReadyPill";
 import { ConnectionPing } from "@/components/ConnectionPing";
+import { RecordingsPanel } from "@/components/RecordingsPanel";
 import { ToastStack, type ToastItem, type ToastKind } from "@/components/Toast";
 import { useTheme } from "@/lib/theme";
 import { colorForId, initialFor } from "@/lib/participantColor";
@@ -19,7 +20,8 @@ import { useVoiceRoom, type DisplaySurface } from "@/hooks/useVoiceRoom";
 import { useNotificationPrefs, fireNotification, type NotificationPrefs } from "@/lib/notifications";
 import { playSound } from "@/lib/sounds";
 import { getDeviceId } from "@/lib/deviceId";
-import { getDesktopBridge } from "@/lib/desktopBridge";
+import { pushToTalkKeyLabel } from "@/lib/audioPrefs";
+import { getDesktopBridge, type SessionClip } from "@/lib/desktopBridge";
 import { playbackStream, releaseGain } from "@/lib/remoteGain";
 import { dragRegion, noDragRegion } from "@/lib/desktopDrag";
 import { WindowControlsPill } from "@/components/WindowControlsPill";
@@ -126,6 +128,10 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  // The chat panel shows one of two things. Not a route or a modal: it's
+  // the same panel, and you're meant to flick between them while the room
+  // carries on around you.
+  const [chatPane, setChatPane] = useState<"chat" | "recordings">("chat");
   const [filterOpen, setFilterOpen] = useState(false);
   // Mirrors the desktop app's instant-replay setting so the room can show
   // that capture is live. Updated both on mount and whenever anything else
@@ -522,7 +528,11 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
       const nowByKey = new Set(state.members.map(keyFor));
       for (const prior of prevMembersRef.current) {
         if (prior.id === selfIdRef.current) continue;
-        if (!nowByKey.has(keyFor(prior))) playSound("leave");
+        if (nowByKey.has(keyFor(prior))) continue;
+        playSound("leave");
+        // Same preference as joining: who's in the room is one thing to
+        // care about, not two.
+        notify("join", `${prior.name} left`, code);
       }
       prevMembersRef.current = state.members;
       setMembers(state.members);
@@ -762,6 +772,18 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     } finally {
       setUploading(false);
     }
+  }
+
+  // A saved clip goes out as an ordinary attachment: read the bytes, hand
+  // them to the same function a dragged-in file goes through, and let the
+  // existing upload path do the compressing and sending. The file on disk
+  // is untouched — this shares a copy.
+  async function handleShareClip(clip: SessionClip) {
+    const bytes = await getDesktopBridge()?.readClip(clip.file);
+    if (!bytes) throw new Error("That clip isn't on disk any more.");
+    const file = new File([new Uint8Array(bytes)], clip.name, { type: "video/mp4" });
+    await handleFilesSelected([file]);
+    setChatPane("chat");
   }
 
   // Same path browsers use for copy-pasting images into WhatsApp/Discord/
@@ -2003,7 +2025,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                 onClick={() => voice.setPushToTalkMode((p) => !p)}
                 disabled={!!voice.micError}
                 className="flex items-center gap-2.5 px-1.5 py-2.5 transition active:scale-95 disabled:opacity-50"
-                title={barCompact ? "Push to talk" : voice.pushToTalkMode ? "Hold Space to talk" : undefined}
+                title={barCompact ? "Push to talk" : voice.pushToTalkMode ? `Hold ${pushToTalkKeyLabel(voice.pushToTalkKey)} to talk` : undefined}
                 aria-label="Push to talk"
                 aria-pressed={voice.pushToTalkMode}
               >
@@ -2125,8 +2147,44 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
         >
           <div className="flex-shrink-0 p-5 pb-3">
             <div className="flex items-center justify-between">
-              <span className="font-display text-lg font-extrabold text-snug-text">Chat</span>
+              <span className="font-display text-lg font-extrabold text-snug-text">
+                {chatPane === "chat" ? "Chat" : "Recordings"}
+              </span>
               <div className="flex items-center gap-1.5">
+                {/* Desktop only — a browser tab has no instant replay and so
+                    no clips to list. Sits with the filter and search rather
+                    than above the messages: it belongs to the panel, and
+                    it's the one control that changes what the panel IS. */}
+                {isDesktop && (
+                  <button
+                    type="button"
+                    onClick={() => setChatPane((p) => (p === "chat" ? "recordings" : "chat"))}
+                    className="flex h-8 items-center gap-1.5 rounded-[11px] px-2.5 transition active:scale-95"
+                    style={{
+                      background:
+                        chatPane === "recordings" ? "var(--snug-mint)" : "var(--snug-chip)",
+                      color:
+                        chatPane === "recordings" ? "var(--snug-on-accent)" : "var(--snug-text)",
+                    }}
+                    aria-pressed={chatPane === "recordings"}
+                    aria-label={chatPane === "chat" ? "Show this session's recordings" : "Back to chat"}
+                    title={chatPane === "chat" ? "This session's recordings" : "Back to chat"}
+                  >
+                    {chatPane === "chat" ? (
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2.5" y="5.5" width="13" height="13" rx="2.5" />
+                        <path d="m18.5 9 3-2v10l-3-2" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-3.8-.9L3 20.5l1.6-4.9A8.4 8.4 0 1 1 21 11.5Z" />
+                      </svg>
+                    )}
+                    <span className="text-[11px] font-extrabold">
+                      {chatPane === "chat" ? "Clips" : "Chat"}
+                    </span>
+                  </button>
+                )}
                 {/* Single-select, not checkboxes: these are mutually
                     exclusive views of the same list, and "All" only means
                     anything as one option among them. As a popover instead
@@ -2222,6 +2280,10 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
             )}
           </div>
 
+          {chatPane === "recordings" ? (
+            <RecordingsPanel onShare={handleShareClip} />
+          ) : (
+          <>
           <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={chatScrollRef} className="flex flex-1 flex-col gap-3 overflow-auto px-5 py-1">
             {filteredMessages.length === 0 && (
@@ -2364,6 +2426,8 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
 
@@ -2394,6 +2458,8 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
               onSelectOutputDevice: voice.selectOutputDevice,
               pushToTalkMode: voice.pushToTalkMode,
               onTogglePushToTalk: () => voice.setPushToTalkMode((p) => !p),
+              pushToTalkKey: voice.pushToTalkKey,
+              onPickPushToTalkKey: voice.selectPushToTalkKey,
               noiseSuppressionEnabled: voice.noiseSuppressionEnabled,
               onToggleNoiseSuppression: () =>
                 voice.setNoiseSuppressionEnabled(!voice.noiseSuppressionEnabled),

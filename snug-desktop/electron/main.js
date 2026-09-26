@@ -15,6 +15,9 @@ const {
 const { spawn, execFile } = require("node:child_process");
 const path = require("node:path");
 const { detectForegroundGame } = require("./gameDetect");
+// Renderer-supplied clip paths reach delete and read — see the module for
+// why that needs a guard, and `node electron/clipPath.js` for its checks.
+const { isOurClip: isClipPath, nextClipName } = require("./clipPath");
 const http = require("node:http");
 const fs = require("node:fs");
 
@@ -783,10 +786,9 @@ async function buildClipFromRing() {
   }
   const ext = path.extname(segments[0].file);
   await fs.promises.mkdir(RECORDINGS_DIR, { recursive: true });
-  const outputPath = path.join(
-    RECORDINGS_DIR,
-    `snug-replay-${new Date().toISOString().replace(/[:.]/g, "-")}${ext}`,
-  );
+  // Numbered per day off what's already in the folder — see nextClipName.
+  const existing = await fs.promises.readdir(RECORDINGS_DIR).catch(() => []);
+  const outputPath = path.join(RECORDINGS_DIR, nextClipName(existing, new Date(), ext));
 
   try {
     if (ext === ".mp4") await concatViaMpegTs(segments, outputPath, SEGMENTS_DIR);
@@ -819,7 +821,9 @@ async function listSavedClips() {
     const names = await fs.promises.readdir(RECORDINGS_DIR);
     const clips = await Promise.all(
       names
-        .filter((n) => /^snug-replay-.*\.(mp4|webm)$/i.test(n))
+        // Both namings — see clipPath.js, which is the one place that
+        // decides what counts as one of our clips.
+        .filter((n) => isClipPath(path.join(RECORDINGS_DIR, n), RECORDINGS_DIR))
         .map(async (name) => {
           const file = path.join(RECORDINGS_DIR, name);
           try {
@@ -835,6 +839,13 @@ async function listSavedClips() {
     return [];
   }
 }
+
+// Clips saved since the app started, newest last. Held in memory on
+// purpose: the room's Recordings list is "what you caught during THIS
+// session", and this is the only place that knows a clip's duration —
+// stat() gives bytes and a timestamp, not seconds. The files themselves
+// stay in the recordings folder exactly as before; nothing here owns them.
+const sessionClips = [];
 
 // Deletes the oldest clips until the folder is back under the cap. Nothing
 // else prunes these — segments are temp files that clean themselves up, but
@@ -904,11 +915,23 @@ const NOTIFICATION_WIDTH = 380;
 const NOTIFICATION_HEIGHT = 130;
 
 function notifyRecordingSaveResult(result) {
-  const search = new URLSearchParams({
-    theme: uiTheme,
+  showSnugNotification({
     kind: result.ok ? "ok" : "fail",
     title: result.ok ? "Instant replay saved" : "Couldn't save replay",
     detail: result.ok ? `${result.seconds}s · ${formatBytes(result.bytes)}` : (result.error ?? ""),
+  });
+}
+
+// The same card, for anything worth saying while Snug isn't the window
+// you're looking at: someone joining, leaving, starting a share. Room
+// events come from the renderer (see snug:notify), which is the only place
+// that knows who did what.
+function showSnugNotification({ kind, title, detail }) {
+  const search = new URLSearchParams({
+    theme: uiTheme,
+    kind: kind ?? "info",
+    title: title ?? "Snug",
+    detail: detail ?? "",
     ms: String(NOTIFICATION_MS),
   }).toString();
 
@@ -971,6 +994,15 @@ function notifyRecordingSaveResult(result) {
 // overlay's (same), plus a native OS notification for whichever of those
 // nobody's actually looking at right now, which mid-game is usually both.
 function notifyRecordingResult(result) {
+  if (result.ok && result.path) {
+    sessionClips.push({
+      file: result.path,
+      name: path.basename(result.path),
+      bytes: result.bytes,
+      seconds: result.seconds,
+      savedAt: Date.now(),
+    });
+  }
   mainWindow?.webContents.send("recording:saved", result);
   overlayWindow?.webContents.send("overlay:save-result", result);
   notifyRecordingSaveResult(result);
@@ -1511,6 +1543,17 @@ ipcMain.on("snug:room-presence", (_event, state) => {
   }
 });
 
+// Room events worth seeing while you're in a game rather than in Snug.
+// Suppressed when the window is right there in front of you — the room
+// already shows its own toast, and two of the same message is worse than
+// one. Everything about WHAT to say comes from the renderer; this only
+// decides whether there's any point saying it.
+ipcMain.on("snug:notify", (_event, { title, detail, kind } = {}) => {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) return;
+  if (typeof title !== "string" || !title) return;
+  showSnugNotification({ kind, title: title.slice(0, 80), detail: String(detail ?? "").slice(0, 120) });
+});
+
 ipcMain.on("snug:preferred-mic-label", (_event, label) => {
   lastPreferredMicLabel = typeof label === "string" && label ? label : null;
 });
@@ -1722,6 +1765,58 @@ ipcMain.handle("recording:set-settings", (_event, next) => {
 });
 
 ipcMain.on("recording:save-clip", () => triggerSaveClip());
+
+// What the Recordings list in the room shows. Filtered against the disk on
+// every call so a clip deleted in Explorer doesn't linger in the list.
+ipcMain.handle("recording:list-session", async () => {
+  const alive = await Promise.all(
+    sessionClips.map(async (clip) => {
+      try {
+        await fs.promises.access(clip.file);
+        return clip;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return alive.filter(Boolean).reverse();
+});
+
+// Recycle Bin, not unlink — same rule as the storage cap. These are things
+// someone chose to keep, and "delete" in a list like this should be
+// undoable the way it is everywhere else on the machine.
+ipcMain.handle("recording:delete-clip", async (_event, file) => {
+  if (!isClipPath(file, RECORDINGS_DIR)) return { ok: false, error: "That isn't a Snug clip." };
+  try {
+    await shell.trashItem(file);
+  } catch (err) {
+    return { ok: false, error: err?.message ?? "Couldn't delete that clip." };
+  }
+  const i = sessionClips.findIndex((c) => c.file === file);
+  if (i !== -1) sessionClips.splice(i, 1);
+  return { ok: true };
+});
+
+// Whatever the machine already opens .mp4 with. A player of our own would
+// be a second video player to maintain for no gain — the one they already
+// use has scrubbing, speed, and volume.
+ipcMain.handle("recording:play-clip", async (_event, file) => {
+  if (!isClipPath(file, RECORDINGS_DIR)) return { ok: false, error: "That isn't a Snug clip." };
+  const error = await shell.openPath(file);
+  return error ? { ok: false, error } : { ok: true };
+});
+
+// The bytes, so the room can hand the clip to the same upload path a
+// dragged-in file takes (compression included). The file stays where it
+// is — sharing copies it into the chat, it doesn't move it.
+ipcMain.handle("recording:read-clip", async (_event, file) => {
+  if (!isClipPath(file, RECORDINGS_DIR)) return null;
+  try {
+    return await fs.promises.readFile(file);
+  } catch {
+    return null;
+  }
+});
 
 ipcMain.handle("recording:open-folder", async () => {
   await fs.promises.mkdir(RECORDINGS_DIR, { recursive: true }).catch(() => {});

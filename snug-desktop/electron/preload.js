@@ -81,6 +81,18 @@ contextBridge.exposeInMainWorld("snugDesktop", {
   setRecordingSettings: (next) => ipcRenderer.invoke("recording:set-settings", next),
   saveReplayNow: () => ipcRenderer.send("recording:save-clip"),
   openRecordingsFolder: () => ipcRenderer.invoke("recording:open-folder"),
+  // Clips saved this session, for the room's Recordings list. The file
+  // paths that come back are handed straight back to the three calls
+  // below; main.js re-checks every one of them against the recordings
+  // folder rather than trusting them (see isOurClip).
+  listSessionClips: () => ipcRenderer.invoke("recording:list-session"),
+  deleteClip: (file) => ipcRenderer.invoke("recording:delete-clip", file),
+  playClip: (file) => ipcRenderer.invoke("recording:play-clip", file),
+  readClip: (file) => ipcRenderer.invoke("recording:read-clip", file),
+  // Room news as one of Snug's own notification cards. Silently does
+  // nothing while the window has focus — main.js decides that, since the
+  // page can't tell whether it's the window you're actually looking at.
+  notify: (payload) => ipcRenderer.send("snug:notify", payload),
   onRecordingSaved: subscribeWithValue("recording:saved"),
   getRecordingUsage: () => ipcRenderer.invoke("recording:get-usage"),
   // Pushed when something OUTSIDE Settings changes these — today that's

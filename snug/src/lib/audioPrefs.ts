@@ -52,3 +52,38 @@ const SHARE_SYSTEM_AUDIO_KEY = "snug-share-system-audio";
 export const getShareSystemAudio = () => read(SHARE_SYSTEM_AUDIO_KEY) !== "off";
 export const setShareSystemAudio = (enabled: boolean) =>
   write(SHARE_SYSTEM_AUDIO_KEY, enabled ? "on" : "off");
+
+// Which key push-to-talk listens for, as a KeyboardEvent.code ("Space",
+// "KeyV", "ControlLeft"). code rather than key so the binding is the
+// physical key: it doesn't move when a layout changes, and it doesn't
+// become a different character when Shift is down.
+//
+// This is an in-app binding, not a global hotkey, and can't be one:
+// Electron's globalShortcut only reports a press, never a release, so a
+// key held down outside the window has no way to say when it was let go.
+const PUSH_TO_TALK_KEY = "snug-push-to-talk-key";
+
+export const getPushToTalkKey = () => read(PUSH_TO_TALK_KEY) ?? "Space";
+export const setPushToTalkKey = (code: string) => write(PUSH_TO_TALK_KEY, code);
+
+// "KeyV" -> "V", "ControlLeft" -> "Left Ctrl". Falls back to the raw code
+// for anything unusual, which still tells you which key it is.
+export function pushToTalkKeyLabel(code: string): string {
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  if (code.startsWith("Numpad")) return `Numpad ${code.slice(6)}`;
+  const named: Record<string, string> = {
+    Space: "Space",
+    ControlLeft: "Left Ctrl",
+    ControlRight: "Right Ctrl",
+    ShiftLeft: "Left Shift",
+    ShiftRight: "Right Shift",
+    AltLeft: "Left Alt",
+    AltRight: "Right Alt",
+    CapsLock: "Caps Lock",
+    Backquote: "`",
+    Tab: "Tab",
+    Enter: "Enter",
+  };
+  return named[code] ?? code;
+}
