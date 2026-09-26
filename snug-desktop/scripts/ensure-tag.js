@@ -58,7 +58,12 @@ if (!releaseToken()) {
 }
 
 function git(args, opts = {}) {
-  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", ...opts }).trim();
+  // execFileSync returns null when stdout isn't captured, which is exactly
+  // what stdio: "inherit" does — the tag push below passes that so its
+  // progress is visible, and trimming the result blew up on null AFTER the
+  // push had already succeeded. The release then stopped before building,
+  // leaving a pushed tag and no release for it.
+  return (execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", ...opts }) ?? "").trim();
 }
 
 // Tagging a tree that doesn't match what's committed would ship a tag
