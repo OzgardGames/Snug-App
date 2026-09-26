@@ -10,6 +10,7 @@ import { useSoundEffectsPref, playSound } from "@/lib/sounds";
 import { getDesktopBridge } from "@/lib/desktopBridge";
 import { ShortcutSettings } from "@/components/ShortcutSettings";
 import { RecordingSettings } from "@/components/RecordingSettings";
+import { getShareSystemAudio, setShareSystemAudio } from "@/lib/audioPrefs";
 import { UpdateSettings } from "@/components/UpdateSettings";
 import { StartupSettings } from "@/components/StartupSettings";
 import {
@@ -288,9 +289,14 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
   // shortcuts have no meaning in a plain browser tab, so this stays false
   // (and the Shortcuts section stays hidden) there.
   const [isDesktop, setIsDesktop] = useState(false);
+  // Read once on mount rather than at render: localStorage isn't there
+  // during the server render, and reading it in the component body would
+  // make the first client render disagree with the markup.
+  const [shareSystemAudio, setShareSystemAudioState] = useState(true);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsDesktop(!!getDesktopBridge()?.isDesktop);
+    setShareSystemAudioState(getShareSystemAudio());
   }, []);
 
   const [inputOpen, setInputOpen] = useState(false);
@@ -580,6 +586,33 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
           {audio.noiseSuppressionError}
         </p>
       )}
+
+      <div className="flex items-center justify-between rounded-2xl bg-snug-chip px-3.5 py-3">
+        <div className="flex items-center gap-2.5">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-snug-text">
+            <rect x="3" y="4" width="18" height="13" rx="2" />
+            <path d="M8 21h8" />
+            <path d="M12 17v4" />
+          </svg>
+          <div className="min-w-0 pr-3">
+            <div className="text-[13.5px] font-bold text-snug-text">Share sound with your screen</div>
+            <div className="text-[11px] font-bold text-snug-muted">
+              Sends what your speakers are playing. That mix includes Snug
+              itself, so the room hears its own voices come back — turn this
+              off if anyone complains of an echo while you share.
+            </div>
+          </div>
+        </div>
+        <Toggle
+          checked={shareSystemAudio}
+          onChange={() => {
+            const next = !shareSystemAudio;
+            setShareSystemAudioState(next);
+            setShareSystemAudio(next);
+          }}
+          label="Share sound with your screen"
+        />
+      </div>
     </div>
   ) : (
     <div className="flex flex-col gap-2">

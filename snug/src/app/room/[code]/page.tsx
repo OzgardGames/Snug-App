@@ -20,7 +20,7 @@ import { useNotificationPrefs, fireNotification, type NotificationPrefs } from "
 import { playSound } from "@/lib/sounds";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDesktopBridge } from "@/lib/desktopBridge";
-import { gainedStream, releaseGain } from "@/lib/remoteGain";
+import { playbackStream, releaseGain } from "@/lib/remoteGain";
 import { dragRegion, noDragRegion } from "@/lib/desktopDrag";
 import { WindowControlsPill } from "@/components/WindowControlsPill";
 import { ResizeHandles } from "@/components/ResizeHandles";
@@ -171,6 +171,17 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   const [copied, setCopied] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [pickedSpotlightId, setPickedSpotlightId] = useState<string | null>(null);
+  // Whose stream you've closed. Stored as the id rather than a boolean so
+  // that closing one person's stream doesn't also hide the next person's:
+  // a different spotlight simply isn't the one you dismissed. Nothing has
+  // to reset it when they stop sharing, either.
+  const [dismissedShareId, setDismissedShareId] = useState<string | null>(null);
+  // What a stream sounds like to YOU — the streamer's own audio is
+  // untouched, this is the viewer's copy. Kept per-room rather than per
+  // stream: "I don't want game audio right now" is about you, not about
+  // which friend happens to be sharing.
+  const [shareMuted, setShareMuted] = useState(false);
+  const [shareVolume, setShareVolume] = useState(1);
   const [sharePickerMode, setSharePickerMode] = useState<"start" | "change" | null>(null);
   const [stageFullscreen, setStageFullscreen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -349,6 +360,9 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
     pickedSpotlightId && sharers.some((s) => s.id === pickedSpotlightId)
       ? pickedSpotlightId
       : (sharers[0]?.id ?? null);
+  // Watching is the default; closing the stage drops you back to the member
+  // grid with a pill offering the way back in.
+  const watchingShare = !!spotlightId && spotlightId !== dismissedShareId;
 
   useEffect(() => {
     if (status !== "joined") return;
@@ -642,19 +656,34 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
   }, [voice.selectedOutputDeviceId]);
 
   // Per-listener volume/mute — client-side only, and local to this tab: it
-  // changes what you hear, never what anyone else hears.
-  // Split at 100%: the element handles anything up to unity (cheap, and
-  // keeps setSinkId working), the gain node handles the rest. Muting still
-  // goes through the element so it's always a hard zero regardless of gain.
-  useEffect(() => {
-    audioRefs.current.forEach((el, peerId) => {
+  // changes what you hear, never what anyone else hears. Split at 100%: the
+  // element handles everything up to unity, and only a real boost brings
+  // Web Audio into it (see remoteGain, and what happened when it didn't).
+  //
+  // The one place that decides what a peer's <audio> element plays and how
+  // loud. Both callers (the element's own ref and the effect below) go
+  // through it so the two can't drift apart — which matters because the
+  // stream itself changes when a boost is switched on or off, not just the
+  // volume.
+  const applyPlayback = useCallback(
+    (el: HTMLAudioElement, peerId: string, stream: MediaStream) => {
       const wanted = localVolumes[peerId] ?? 1;
       const silent = deafened || localMutes[peerId];
+      // Muting goes through the element so it's a hard zero regardless of
+      // any gain, and a muted peer never needs the boost graph at all.
+      const played = playbackStream(peerId, stream, silent ? 1 : wanted);
+      if (el.srcObject !== played) el.srcObject = played;
       el.volume = silent ? 0 : Math.min(1, wanted);
+    },
+    [localVolumes, localMutes, deafened],
+  );
+
+  useEffect(() => {
+    audioRefs.current.forEach((el, peerId) => {
       const stream = voice.remoteStreams.get(peerId);
-      if (stream) gainedStream(peerId, stream, silent ? 1 : Math.max(1, wanted));
+      if (stream) applyPlayback(el, peerId, stream);
     });
-  }, [localVolumes, localMutes, deafened, voice.remoteStreams]);
+  }, [applyPlayback, voice.remoteStreams]);
 
   // Releases a peer's gain chain when the peer is actually gone, which the
   // <audio> ref callback can't do (see its own comment). The last cleanup
@@ -1256,12 +1285,8 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           ref={(el) => {
             if (el) {
               audioRefs.current.set(peerId, el);
-              const wanted = localVolumes[peerId] ?? 1;
-              const silent = deafened || localMutes[peerId];
-              const played = gainedStream(peerId, stream, silent ? 1 : Math.max(1, wanted));
-              if (el.srcObject !== played) el.srcObject = played;
+              applyPlayback(el, peerId, stream);
               applySinkId(el, voice.selectedOutputDeviceId);
-              el.volume = silent ? 0 : Math.min(1, wanted);
             } else {
               // Deliberately does NOT release the gain chain. This ref is an
               // inline arrow, so React detaches it with null and re-attaches
@@ -1287,7 +1312,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
           ref={voiceColumnRef}
           className={`flex min-h-0 min-w-0 flex-col ${isMobileLayout ? "max-h-[40vh] flex-shrink-0 overflow-hidden" : "flex-1"}`}
         >
-          {sharers.length > 0 ? (
+          {sharers.length > 0 && watchingShare ? (
             <div className="flex min-h-0 flex-1 flex-col gap-3.5">
               {/* who's sharing picker */}
               <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto pt-[3px] pb-0.5">
@@ -1352,10 +1377,58 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                   <span className="ml-1.5 text-xs font-bold text-snug-muted">
                     {spotlightId === selfId ? "Your screen" : `${sharers.find((s) => s.id === spotlightId)?.name ?? ""}'s screen`}
                   </span>
+                  {/* Viewer-side sound: this changes only your own copy of
+                      the stream. Hidden on your own screen, which is muted
+                      anyway so you don't hear yourself twice. */}
+                  {spotlightId !== selfId && (
+                    <div
+                      className="ml-auto flex items-center gap-1.5 rounded-full bg-snug-chip py-1 pr-2.5 pl-1.5"
+                      style={isDesktop ? noDragRegion : undefined}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setShareMuted((m) => !m)}
+                        className="flex h-5 w-5 items-center justify-center rounded-full transition active:scale-90"
+                        aria-label={shareMuted ? "Unmute this stream" : "Mute this stream"}
+                        title={shareMuted ? "Unmute this stream" : "Mute this stream"}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-snug-text">
+                          <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+                          {shareMuted ? <path d="M16 9l5 6M21 9l-5 6" /> : <path d="M16 8a6 6 0 0 1 0 8" />}
+                        </svg>
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={shareMuted ? 0 : Math.round(shareVolume * 100)}
+                        onChange={(e) => {
+                          setShareVolume(Number(e.target.value) / 100);
+                          if (shareMuted) setShareMuted(false);
+                        }}
+                        className="snug-slider w-[70px]"
+                        aria-label="Stream volume"
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDismissedShareId(spotlightId)}
+                    className={`flex h-6 items-center gap-1 rounded-lg px-2 text-[11px] font-extrabold text-snug-text transition active:scale-95 ${spotlightId === selfId ? "ml-auto" : ""}`}
+                    style={{ background: "var(--snug-chip)", ...(isDesktop ? noDragRegion : undefined) }}
+                    aria-label="Stop watching and go back to the room"
+                    title="Stop watching — you can come back any time"
+                  >
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                    Back to room
+                  </button>
                   <button
                     type="button"
                     onClick={toggleStageFullscreen}
-                    className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg transition active:scale-95"
+                    className="flex h-6 w-6 items-center justify-center rounded-lg transition active:scale-95"
                     style={{ background: "var(--snug-chip)", ...(isDesktop ? noDragRegion : undefined) }}
                     aria-label={stageFullscreen ? "Exit fullscreen" : "View fullscreen"}
                   >
@@ -1391,6 +1464,11 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                             ? voice.localScreenStream
                             : voice.remoteScreenStreams.get(spotlightId);
                         if (stream && el.srcObject !== stream) el.srcObject = stream;
+                        // Your own screen stays muted whatever the slider
+                        // says — hearing your own shared audio back is just
+                        // your machine twice.
+                        el.muted = spotlightId === selfId || shareMuted;
+                        el.volume = shareVolume;
                       }}
                     />
                   )}
@@ -1494,6 +1572,42 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
               </div>
             </div>
           ) : (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {/* Someone is still sharing, you've just closed it. Without this
+              there'd be no sign a stream was running at all, and no way
+              back into one. One button per sharer, since the one you
+              closed may not be the only one. */}
+          {sharers.length > 0 && (
+            <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto pt-[3px] pb-0.5">
+              <span className="mr-0.5 flex-shrink-0 text-[11px] font-extrabold tracking-wide text-snug-muted uppercase">
+                Sharing now
+              </span>
+              {sharers.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setPickedSpotlightId(p.id);
+                    setDismissedShareId(null);
+                  }}
+                  className="flex flex-shrink-0 items-center gap-1.5 rounded-full bg-snug-chip py-1.5 pr-3 pl-1.5 transition active:scale-95"
+                  style={isDesktop ? noDragRegion : undefined}
+                  title={`Watch ${p.name}'s screen`}
+                >
+                  <div
+                    className="flex h-[22px] w-[22px] items-center justify-center rounded-full font-display text-[10px] font-extrabold"
+                    style={{ background: colorForId(p.id), color: palette.cardInk }}
+                  >
+                    {initialFor(p.name)}
+                  </div>
+                  <span className="inline-block h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full" style={{ background: "var(--snug-pink)" }} />
+                  <span className="text-xs font-bold text-snug-text">
+                    {p.id === selfId ? "You're sharing" : `Watch ${p.name}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="grid flex-1 auto-rows-min grid-cols-2 gap-4 overflow-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
             {members.map((member) => {
               const isYou = member.id === selfId;
@@ -1724,6 +1838,7 @@ export default function RoomPage(props: PageProps<"/room/[code]">) {
                 </div>
               );
             })}
+          </div>
           </div>
           )}
 

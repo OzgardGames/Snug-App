@@ -16,6 +16,7 @@ import {
   setPreferredSpeaker,
   getNoiseSuppressionEnabled,
   setNoiseSuppressionEnabled as persistNoiseSuppressionEnabled,
+  getShareSystemAudio,
 } from "@/lib/audioPrefs";
 import {
   applyNoiseSuppression,
@@ -59,9 +60,10 @@ export type DisplaySurface = "monitor" | "window" | "browser";
 // honest mitigation is not sharing system audio when several people are
 // talking.
 function displayMediaConstraints(surface?: DisplaySurface): DisplayMediaStreamOptions {
-  return surface
-    ? { video: { displaySurface: surface }, audio: true }
-    : { video: true, audio: true };
+  // Read at share time, not at mount: it's a Settings toggle, and the next
+  // share should honour whatever it says now.
+  const audio = getShareSystemAudio();
+  return surface ? { video: { displaySurface: surface }, audio } : { video: true, audio };
 }
 
 // Closing the picker without choosing anything is a dismissal, not a failure,
@@ -438,7 +440,18 @@ export function useVoiceRoom({ active, selfId, memberIds, forceMuted = false }: 
       .then((list) => {
         if (cancelled || !list) return;
         setDevices(list.filter((d) => d.kind === "audioinput"));
-        setOutputDevices(list.filter((d) => d.kind === "audiooutput"));
+        const outputs = list.filter((d) => d.kind === "audiooutput");
+        setOutputDevices(outputs);
+        // A remembered speaker that isn't here any more (headset unplugged,
+        // monitor switched off) would otherwise stay selected forever: it's
+        // in localStorage, so it survives rejoining and restarting, and
+        // setSinkId to a device that's gone leaves you hearing nothing with
+        // nothing on screen to explain why. Fall back to the system default.
+        const remembered = getPreferredSpeaker();
+        if (remembered && outputs.length > 0 && !outputs.some((d) => d.deviceId === remembered)) {
+          setPreferredSpeaker(undefined);
+          setSelectedOutputDeviceId(undefined);
+        }
       })
       .catch((err: DOMException) => {
         if (cancelled) return;

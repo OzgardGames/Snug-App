@@ -37,3 +37,18 @@ export const setPreferredSpeaker = (deviceId: string | undefined) => write(SPEAK
 export const getNoiseSuppressionEnabled = () => read(NOISE_SUPPRESSION_KEY) !== "off";
 export const setNoiseSuppressionEnabled = (enabled: boolean) =>
   write(NOISE_SUPPRESSION_KEY, enabled ? "on" : "off");
+
+// Whether a screen share carries the system's sound with it.
+//
+// Defaults to on: a shared game without its audio is half a share. It's a
+// choice at all because Windows loopback is the whole output mix, which
+// includes Snug playing everyone else's voices — so a share with sound also
+// sends the room's own voices back out, arriving a few hundred milliseconds
+// late for whoever is listening. Anyone who runs into that can turn it off
+// here rather than stop sharing. (A viewer can also just mute the stream on
+// their own side — see the stage controls in the room.)
+const SHARE_SYSTEM_AUDIO_KEY = "snug-share-system-audio";
+
+export const getShareSystemAudio = () => read(SHARE_SYSTEM_AUDIO_KEY) !== "off";
+export const setShareSystemAudio = (enabled: boolean) =>
+  write(SHARE_SYSTEM_AUDIO_KEY, enabled ? "on" : "off");
