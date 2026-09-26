@@ -104,3 +104,57 @@ if (onRemote) {
   console.log(`[ensure-tag] pushed ${tag} to origin`);
 }
 console.log(`[ensure-tag] ${tag} is on origin — safe to publish a release for it`);
+
+// Create the release NOW, before electron-builder gets a chance to.
+//
+// electron-builder runs its GitHub publisher once per artifact (the
+// installer and its blockmap), and each pass independently checks whether a
+// release exists for the tag. When it doesn't, both create one, and GitHub
+// happily ends up with TWO releases sharing a tag. Whichever one the
+// download path resolves to is then a coin flip: for 1.0.3 it picked the
+// one holding only the blockmap, so latest.yml 404'd and nobody could
+// update; for 1.0.4 it picked the right one and the duplicate was merely
+// untidy. Creating it up front means both passes find an existing release
+// and just upload to it.
+//
+// Not fatal if it fails: the release still publishes the way it always did,
+// duplicate risk and all, which beats refusing to build over a tidy-up.
+const { owner, repo } = require(path.join(projectDir, "package.json")).build.publish[0];
+const api = `https://api.github.com/repos/${owner}/${repo}`;
+const headers = {
+  Authorization: `Bearer ${releaseToken()}`,
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+};
+
+(async () => {
+  const existing = await fetch(`${api}/releases/tags/${tag}`, { headers });
+  if (existing.ok) {
+    console.log(`[ensure-tag] a release for ${tag} already exists`);
+    return;
+  }
+  if (existing.status === 401 || existing.status === 403) {
+    console.error(
+      `[ensure-tag] GitHub rejected the token (HTTP ${existing.status}).
+` +
+        `Publishing would fail at the end of the build, so stopping here.
+` +
+        `Check the token in electron-builder.env has write access to ${owner}/${repo}.`,
+    );
+    process.exit(1);
+  }
+
+  const created = await fetch(`${api}/releases`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tag_name: tag, name: tag, draft: false, prerelease: false }),
+  });
+  if (created.ok) {
+    console.log(`[ensure-tag] created the GitHub release for ${tag}`);
+  } else {
+    console.warn(
+      `[ensure-tag] couldn't pre-create the release (HTTP ${created.status}); ` +
+        `electron-builder will make one, which may duplicate.`,
+    );
+  }
+})();
