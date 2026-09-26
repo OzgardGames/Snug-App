@@ -296,6 +296,9 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
   // shortcuts have no meaning in a plain browser tab, so this stays false
   // (and the Shortcuts section stays hidden) there.
   const [isDesktop, setIsDesktop] = useState(false);
+  // "granted" | "denied" | "default" | "unsupported" — read on mount rather
+  // than during render, since Notification doesn't exist on the server.
+  const [notifPermission, setNotifPermission] = useState("granted");
   // Read once on mount rather than at render: localStorage isn't there
   // during the server render, and reading it in the component body would
   // make the first client render disagree with the markup.
@@ -304,6 +307,11 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsDesktop(!!getDesktopBridge()?.isDesktop);
     setShareSystemAudioState(getShareSystemAudio());
+    setNotifPermission(
+      typeof window !== "undefined" && "Notification" in window
+        ? Notification.permission
+        : "unsupported",
+    );
   }, []);
 
   const [inputOpen, setInputOpen] = useState(false);
@@ -778,6 +786,33 @@ export function SettingsModal({ onClose, audio, variant = "modal" }: SettingsMod
           ? "Shown as a small Snug card in the corner, only while Snug isn't the window you're in."
           : "Shown as a browser notification, only while this tab isn't the one you're looking at."}
       </p>
+      {/* A browser won't show anything until it's been asked, and it only
+          accepts the question in response to a click — so a preference
+          switched on here does nothing on its own. The desktop app draws
+          its own card and needs none of this. */}
+      {!isDesktop && notifPermission !== "granted" && (
+        <div className="mb-1 flex items-center justify-between gap-3 rounded-2xl bg-snug-chip px-3.5 py-3">
+          <div className="min-w-0 text-[11px] font-bold text-snug-muted">
+            {notifPermission === "denied"
+              ? "Your browser is blocking notifications for Snug. Allow them in its site settings to see these."
+              : notifPermission === "unsupported"
+                ? "This browser doesn't support notifications, so these stay in the app only."
+                : "Your browser hasn't been asked yet, so none of these can show."}
+          </div>
+          {notifPermission === "default" && (
+            <button
+              type="button"
+              onClick={() =>
+                Notification.requestPermission().then((p) => setNotifPermission(p))
+              }
+              className="flex-shrink-0 rounded-xl px-3 py-2 text-[11px] font-extrabold transition active:scale-95"
+              style={{ background: "var(--snug-primary)", color: "var(--snug-primary-text)" }}
+            >
+              Allow
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-0.5">
         {NOTIFICATION_ROWS.map((row) => (
           <div key={row.key} className="flex items-center justify-between py-2.5">
